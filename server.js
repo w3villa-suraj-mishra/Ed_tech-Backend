@@ -149,18 +149,16 @@ if (process.env.VERCEL) {
     try {
       await sequelize.sync({ alter: false });
       logger.info('Database synchronized successfully');
-
-      server.listen(PORT, () => {
-        logger.info(`Server is running on port ${PORT}`);
-        console.log(`\n✓ EdTech Backend Server with Socket.IO`);
-        console.log(`✓ Running on: http://localhost:${PORT}`);
-        console.log(`✓ Environment: ${process.env.NODE_ENV}\n`);
-      });
     } catch (error) {
-      logger.error('Failed to start server:', error.message);
-      console.error('Failed to start server:', error);
-      process.exit(1);
+      logger.error('Database connection warning (server started without DB):', error.message);
     }
+
+    server.listen(PORT, () => {
+      logger.info(`Server is running on port ${PORT}`);
+      console.log(`\n✓ EdTech Backend Server with Socket.IO`);
+      console.log(`✓ Running on port ${PORT}`);
+      console.log(`✓ Environment: ${process.env.NODE_ENV}\n`);
+    });
   };
   startServer();
 }
