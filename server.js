@@ -63,13 +63,22 @@ if (!process.env.VERCEL) {
 // ==========================================
 
 // CORS configuration
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:3001',
+  'http://localhost:3001',
+  'http://localhost:3000'
+];
+
 app.use(
   cors({
-    origin: [
-      process.env.FRONTEND_URL || 'http://localhost:3001',
-      'http://localhost:3001',
-      'http://localhost:3000'
-    ],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, or server-to-server)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
     allowedHeaders: ['Content-Type', 'Authorization']
