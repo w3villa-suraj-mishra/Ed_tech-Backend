@@ -16,8 +16,8 @@ const startSilverExpirationCron = () => {
     }
   };
 
-  // Initial run and hourly interval
-  checkExpirations();
+  // Initial run (delayed by 10s to allow DB sync to complete first) and hourly interval
+  setTimeout(checkExpirations, 10000);
   setInterval(checkExpirations, ONE_HOUR);
   logger.info('Silver expiration background interval initialized.');
 };
