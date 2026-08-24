@@ -1,4 +1,5 @@
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder_key_for_build';
+const stripe = require('stripe')(stripeSecretKey);
 const { Enrollment, Course } = require('../models');
 const { PLAN_TYPES, PLAN_CONFIG, calculatePlanPrice } = require('../config/plans');
 const logger = require('../utils/logger');
