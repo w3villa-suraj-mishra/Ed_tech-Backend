@@ -76,6 +76,20 @@ app.use(
   })
 );
 
+// DB connection safety check middleware for Vercel Serverless
+app.use((req, res, next) => {
+  if (req.path === '/health' || req.path === '/') {
+    return next();
+  }
+  if (!process.env.DATABASE_URL && (process.env.DB_HOST === 'localhost' || !process.env.DB_HOST) && process.env.VERCEL) {
+    return res.status(500).json({
+      success: false,
+      message: "Database Error: Vercel serverless function cannot connect to localhost PostgreSQL. Please configure DATABASE_URL in Vercel Environment Variables pointing to a remote PostgreSQL database (Supabase, Neon, Render, etc.)."
+    });
+  }
+  next();
+});
+
 // Body parsing middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
