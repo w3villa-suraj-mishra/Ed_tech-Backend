@@ -129,26 +129,28 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-const startServer = async () => {
-  try {
-    // Sync database
-    await sequelize.sync({ alter: false });
-    logger.info('Database synchronized successfully');
+if (process.env.VERCEL) {
+  // On Vercel serverless, do not call server.listen() or sync DB synchronously on top-level
+  sequelize.authenticate().catch((err) => console.error('DB Auth error:', err.message));
+} else {
+  const startServer = async () => {
+    try {
+      await sequelize.sync({ alter: false });
+      logger.info('Database synchronized successfully');
 
-    // Start http server (with Socket.IO attached)
-    server.listen(PORT, () => {
-      logger.info(`Server is running on port ${PORT}`);
-      console.log(`\n✓ EdTech Backend Server with Socket.IO`);
-      console.log(`✓ Running on: http://localhost:${PORT}`);
-      console.log(`✓ Environment: ${process.env.NODE_ENV}\n`);
-    });
-  } catch (error) {
-    logger.error('Failed to start server:', error.message);
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  }
-};
-
-startServer();
+      server.listen(PORT, () => {
+        logger.info(`Server is running on port ${PORT}`);
+        console.log(`\n✓ EdTech Backend Server with Socket.IO`);
+        console.log(`✓ Running on: http://localhost:${PORT}`);
+        console.log(`✓ Environment: ${process.env.NODE_ENV}\n`);
+      });
+    } catch (error) {
+      logger.error('Failed to start server:', error.message);
+      console.error('Failed to start server:', error);
+      process.exit(1);
+    }
+  };
+  startServer();
+}
 
 module.exports = app;
