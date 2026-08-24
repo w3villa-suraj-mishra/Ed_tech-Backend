@@ -6,6 +6,7 @@ let sequelize;
 if (process.env.DATABASE_URL) {
   sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
+    dialectModule: require('pg'),
     dialectOptions: {
       ssl: {
         require: true,
@@ -18,6 +19,7 @@ if (process.env.DATABASE_URL) {
 } else {
   sequelize = new Sequelize({
     dialect: 'postgres',
+    dialectModule: require('pg'),
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 5432,
     database: process.env.DB_NAME || 'edtech',
