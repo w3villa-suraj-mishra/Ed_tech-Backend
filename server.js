@@ -102,12 +102,6 @@ app.use(passport.initialize());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ==========================================
-// ROUTES
-// ==========================================
-app.use('/', routes);
-app.use('/admin', adminRoutes);
-
 // Health check & root route
 app.get('/', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'EdTech API Backend is running' });
@@ -116,6 +110,12 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'Server is running' });
 });
+
+// ==========================================
+// ROUTES
+// ==========================================
+app.use('/', routes);
+app.use('/admin', adminRoutes);
 
 // 404 handler
 app.use((req, res) => {
