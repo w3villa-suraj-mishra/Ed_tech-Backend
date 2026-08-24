@@ -108,7 +108,11 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/', routes);
 app.use('/admin', adminRoutes);
 
-// Health check
+// Health check & root route
+app.get('/', (req, res) => {
+  res.status(200).json({ status: 'OK', message: 'EdTech API Backend is running' });
+});
+
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'Server is running' });
 });
