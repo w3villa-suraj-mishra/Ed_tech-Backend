@@ -51,6 +51,12 @@ router.post('/auth/changepassword', authenticateUser, authController.changePassw
 
 // OAuth routes
 router.get('/auth/google_oauth2', (req, res, next) => {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return res.status(400).json({
+      success: false,
+      message: "Google OAuth is not configured on the server. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend Environment Variables."
+    });
+  }
   const mode = req.query.mode || 'signup';
   const role = req.query.role || 'Student';
   passport.authenticate('google_oauth2', {
@@ -71,6 +77,12 @@ router.get('/auth/debug', (req, res) => {
   });
 });
 router.get('/auth/github', (req, res, next) => {
+  if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
+    return res.status(400).json({
+      success: false,
+      message: "GitHub OAuth is not configured on the server. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in backend Environment Variables."
+    });
+  }
   const mode = req.query.mode || 'signup';
   const role = req.query.role || 'Student';
   passport.authenticate('github', {
