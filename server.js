@@ -18,51 +18,45 @@ const { socketService } = require('./services/notificationService');
 const app = express();
 const server = http.createServer(app);
 
-// Initialize Socket.IO with CORS
-const io = new Server(server, {
-  cors: {
-    origin: [
-      process.env.FRONTEND_URL || 'http://localhost:3001',
-      'http://localhost:3001',
-      'http://localhost:3000'
-    ],
-    credentials: true,
-    methods: ['GET', 'POST']
-  }
-});
-
-// Socket Authentication and Room Allocation
-io.use((socket, next) => {
-  const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-  if (!token) {
-    return next(new Error('Authentication error: Token missing'));
-  }
-  try {
-    const cleanToken = token.replace('Bearer ', '');
-    const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET || 'fallbackSecretKeyForJWT12345');
-    socket.user = decoded;
-    next();
-  } catch (err) {
-    return next(new Error('Authentication error: Invalid token'));
-  }
-});
-
-io.on('connection', (socket) => {
-  const userId = socket.user?.id || socket.user?._id;
-  if (userId) {
-    socket.join(`user:${userId}`);
-    logger.info(`User connected to notification socket room: user:${userId}`);
-  }
-
-  socket.on('disconnect', () => {
-    logger.info(`Socket disconnected for user: ${userId}`);
+if (!process.env.VERCEL) {
+  // Initialize Socket.IO with CORS (Only on full Node.js servers like Render/local)
+  const io = new Server(server, {
+    cors: {
+      origin: [
+        process.env.FRONTEND_URL || 'http://localhost:3001',
+        'http://localhost:3001',
+        'http://localhost:3000'
+      ],
+      credentials: true,
+      methods: ['GET', 'POST']
+    }
   });
-});
 
-socketService.init(io);
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+    if (!token) {
+      return next(new Error('Authentication error: Token missing'));
+    }
+    try {
+      const cleanToken = token.replace('Bearer ', '');
+      const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET || 'fallbackSecretKeyForJWT12345');
+      socket.user = decoded;
+      next();
+    } catch (err) {
+      return next(new Error('Authentication error: Invalid token'));
+    }
+  });
 
-// Initialize Silver expiration cron job
-startSilverExpirationCron();
+  io.on('connection', (socket) => {
+    const userId = socket.user?.id || socket.user?._id;
+    if (userId) {
+      socket.join(`user:${userId}`);
+    }
+  });
+
+  socketService.init(io);
+  startSilverExpirationCron();
+}
 
 // ==========================================
 // MIDDLEWARE
