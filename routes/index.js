@@ -57,6 +57,12 @@ router.get('/auth/google_oauth2', (req, res, next) => {
       message: "Google OAuth is not configured on the server. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend Environment Variables."
     });
   }
+  if (!passport._strategies || !passport._strategies['google_oauth2']) {
+    return res.status(500).json({
+      success: false,
+      message: "Google OAuth strategy is not initialized. Please verify GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel environment variables."
+    });
+  }
   const mode = req.query.mode || 'signup';
   const role = req.query.role || 'Student';
   passport.authenticate('google_oauth2', {

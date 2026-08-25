@@ -4,48 +4,25 @@ const GitHubStrategy = require('passport-github2').Strategy;
 const logger = require('../utils/logger');
 
 const configurePassport = () => {
-  const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-
-  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-    const defaultBackend = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://ed-tech-backend-2kha.vercel.app';
-    const backendUrl = (process.env.BACKEND_URL || defaultBackend).trim();
+  try {
+    const defaultBackend = 'https://ed-tech-backend-2kha.vercel.app';
+    const backendUrl = String(process.env.BACKEND_URL || defaultBackend).trim();
     const rawCallback = process.env.GOOGLE_CALLBACK_URL || `${backendUrl}/auth/google_oauth2/callback`;
     const googleCallback = String(rawCallback).replace(/[\r\n\t ]+/g, '').trim();
-    const googleStrategy = new GoogleStrategy(
-      {
-        clientID: process.env.GOOGLE_CLIENT_ID.trim(),
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET.trim(),
-        callbackURL: googleCallback
-      },
-      (accessToken, refreshToken, profile, done) => {
-        done(null, {
-          provider: 'google_oauth2',
-          uid: profile.id,
-          email: profile.emails?.[0]?.value,
-          displayName: profile.displayName,
-          photo: profile.photos?.[0]?.value,
-          accessToken
-        });
-      }
-    );
-    googleStrategy.name = 'google_oauth2';
-    passport.use(googleStrategy);
-    logger.info(`Google OAuth callback URL: ${googleCallback}`);
-  }
 
-  if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
-    const githubCallback = process.env.GITHUB_CALLBACK_URL || `${baseUrl}/auth/github/callback`;
-    passport.use(
-      new GitHubStrategy(
+    const googleClientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+    const googleClientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+
+    if (googleClientId && googleClientSecret) {
+      const googleStrategy = new GoogleStrategy(
         {
-          clientID: process.env.GITHUB_CLIENT_ID,
-          clientSecret: process.env.GITHUB_CLIENT_SECRET,
-          callbackURL: githubCallback,
-          scope: ['user:email']
+          clientID: googleClientId,
+          clientSecret: googleClientSecret,
+          callbackURL: googleCallback
         },
         (accessToken, refreshToken, profile, done) => {
           done(null, {
-            provider: 'github',
+            provider: 'google_oauth2',
             uid: profile.id,
             email: profile.emails?.[0]?.value,
             displayName: profile.displayName,
@@ -53,9 +30,43 @@ const configurePassport = () => {
             accessToken
           });
         }
-      )
-    );
-    logger.info(`GitHub OAuth callback URL: ${githubCallback}`);
+      );
+      googleStrategy.name = 'google_oauth2';
+      passport.use(googleStrategy);
+      logger.info(`Google OAuth callback URL: ${googleCallback}`);
+    } else {
+      logger.warn('Google OAuth credentials missing or invalid in environment variables');
+    }
+
+    const githubClientId = String(process.env.GITHUB_CLIENT_ID || '').trim();
+    const githubClientSecret = String(process.env.GITHUB_CLIENT_SECRET || '').trim();
+
+    if (githubClientId && githubClientSecret) {
+      const githubCallback = process.env.GITHUB_CALLBACK_URL || `${backendUrl}/auth/github/callback`;
+      passport.use(
+        new GitHubStrategy(
+          {
+            clientID: githubClientId,
+            clientSecret: githubClientSecret,
+            callbackURL: githubCallback,
+            scope: ['user:email']
+          },
+          (accessToken, refreshToken, profile, done) => {
+            done(null, {
+              provider: 'github',
+              uid: profile.id,
+              email: profile.emails?.[0]?.value,
+              displayName: profile.displayName,
+              photo: profile.photos?.[0]?.value,
+              accessToken
+            });
+          }
+        )
+      );
+      logger.info(`GitHub OAuth callback URL: ${githubCallback}`);
+    }
+  } catch (err) {
+    logger.error('Error configuring Passport:', err.message);
   }
 };
 
