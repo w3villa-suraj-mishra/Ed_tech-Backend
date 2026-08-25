@@ -123,6 +123,25 @@ app.get('/health', (req, res) => {
 // ==========================================
 // ROUTES
 // ==========================================
+app.get('/auth/google_oauth2/callback', (req, res, next) => {
+  passport.authenticate('google_oauth2', { session: false }, (err, user) => {
+    if (err || !user) {
+      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=auth_failed`);
+    }
+    req.authInfo = user;
+    req.user = user;
+    if (req.query.state) {
+      try {
+        const statePayload = JSON.parse(req.query.state);
+        req.query = { ...req.query, ...statePayload };
+      } catch {
+        // ignore malformed state
+      }
+    }
+    next();
+  })(req, res, next);
+}, require('./controllers/sessionsController').create);
+
 app.use('/', routes);
 app.use('/admin', adminRoutes);
 
