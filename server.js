@@ -125,14 +125,24 @@ app.get('/health', (req, res) => {
 // ==========================================
 app.get('/auth/google_oauth2/callback', (req, res, next) => {
   passport.authenticate('google_oauth2', { session: false }, (err, user) => {
+    const defaultFrontend = 'https://ed-tech-frontend-indol.vercel.app';
+    const targetFrontend = (process.env.FRONTEND_URL || defaultFrontend).trim();
     if (err || !user) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?error=auth_failed`);
+      logger.error('Google OAuth auth error:', err ? err.message : 'No user profile');
+      return res.redirect(`${targetFrontend}/login?error=auth_failed`);
     }
     req.authInfo = user;
     req.user = user;
     if (req.query.state) {
-      const [mode, role] = req.query.state.split('_');
-      req.query = { ...req.query, mode, role };
+      try {
+        const statePayload = JSON.parse(req.query.state);
+        req.query = { ...req.query, ...statePayload };
+      } catch (e) {
+        if (typeof req.query.state === 'string' && req.query.state.includes('_')) {
+          const [mode, role] = req.query.state.split('_');
+          req.query = { ...req.query, mode, role };
+        }
+      }
     }
     next();
   })(req, res, next);
