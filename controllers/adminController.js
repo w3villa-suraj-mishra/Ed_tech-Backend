@@ -22,7 +22,11 @@ const sign = (user) =>
 // GET /admin/check-init
 const checkInit = async (req, res) => {
   try {
-    const count = await User.count();
+    const count = await User.count({
+      where: {
+        accountType: { [Op.in]: ['Superadmin', 'Admin'] }
+      }
+    });
     return res.json({ success: true, usersExist: count > 0 });
   } catch (e) {
     logger.error('CHECK INIT:', e.message);
@@ -30,10 +34,14 @@ const checkInit = async (req, res) => {
   }
 };
 
-// POST /admin/setup  (only when zero users exist)
+// POST /admin/setup  (only when zero Admin/Superadmin users exist)
 const setup = async (req, res) => {
   try {
-    const count = await User.count();
+    const count = await User.count({
+      where: {
+        accountType: { [Op.in]: ['Superadmin', 'Admin'] }
+      }
+    });
     if (count > 0) {
       return res.status(403).json({ success: false, message: 'Setup already completed.' });
     }
