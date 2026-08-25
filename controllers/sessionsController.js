@@ -119,7 +119,7 @@ const sessionsController = {
     } catch (error) {
       logger.error('OAUTH CALLBACK FAILED:', error.message);
       const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
-      return res.redirect(`${targetFrontend}/login?error=auth_failed`);
+      return res.redirect(`${targetFrontend}/login?error=${encodeURIComponent(error.message)}`);
     }
   },
 
