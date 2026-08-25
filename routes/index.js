@@ -50,28 +50,6 @@ router.post('/logout', authController.logout);
 router.post('/auth/changepassword', authenticateUser, authController.changePassword);
 
 // OAuth routes
-router.get('/auth/google_oauth2', (req, res, next) => {
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-    return res.status(400).json({
-      success: false,
-      message: "Google OAuth is not configured on the server. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend Environment Variables."
-    });
-  }
-  if (!passport._strategies || !passport._strategies['google_oauth2']) {
-    return res.status(500).json({
-      success: false,
-      message: "Google OAuth strategy is not initialized. Please verify GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel environment variables."
-    });
-  }
-  const mode = req.query.mode || 'signup';
-  const role = req.query.role || 'Student';
-  passport.authenticate('google_oauth2', {
-    scope: ['email', 'profile'],
-    session: false,
-    state: `${mode}_${role}`
-  })(req, res, next);
-});
-// Debug route to inspect OAuth config (safe: only exposes client IDs and callback URLs, not secrets)
 router.get('/auth/debug', (req, res) => {
   return res.json({
     googleClientId: process.env.GOOGLE_CLIENT_ID || null,
@@ -82,6 +60,7 @@ router.get('/auth/debug', (req, res) => {
     frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000'
   });
 });
+
 router.get('/auth/github', (req, res, next) => {
   if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
     return res.status(400).json({
@@ -97,6 +76,7 @@ router.get('/auth/github', (req, res, next) => {
     state: JSON.stringify({ mode, role })
   })(req, res, next);
 });
+
 router.get('/auth/google_oauth2', (req, res, next) => {
   logger.info('[GOOGLE 1] OAuth request started');
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
