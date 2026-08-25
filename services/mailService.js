@@ -2,33 +2,18 @@ const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 
 const getTransporter = async () => {
-  const host = process.env.EMAIL_HOST;
-  const port = Number(process.env.EMAIL_PORT || 587);
-  const user = process.env.EMAIL_USER || process.env.EMAIL_FROM;
-  const pass = process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD;
-  const service = process.env.EMAIL_SERVICE;
+  const user = String(process.env.EMAIL_USER || process.env.EMAIL_FROM || '').trim();
+  const pass = String(process.env.EMAIL_PASS || process.env.EMAIL_PASSWORD || '').trim();
+  const host = process.env.EMAIL_HOST || 'smtp.gmail.com';
+  const port = Number(process.env.EMAIL_PORT || 465);
 
-  // 1. If explicit service (e.g. Gmail) or host with user/pass is configured
-  if (service || (host && user && pass)) {
-    const config = service
-      ? { service, auth: { user, pass } }
-      : {
-          host,
-          port,
-          secure: port === 465,
-          auth: { user, pass },
-        };
-    return nodemailer.createTransport(config);
-  }
-
-  // 2. If user and pass exist without host/service (default to Gmail service)
   if (user && pass && user !== 'your_email@gmail.com' && pass !== 'your_app_password') {
     return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: user.trim(),
-        pass: pass.trim()
-      }
+      host: host.includes('gmail') ? 'smtp.gmail.com' : host,
+      port: port,
+      secure: port === 465,
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false }
     });
   }
 
