@@ -112,12 +112,14 @@ const sessionsController = {
         { expiresIn: '7d' }
       );
 
+      const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
       return res.redirect(
-        `${process.env.FRONTEND_URL}/oauth-success?token=${jwtToken}&role=${user.accountType}`
+        `${targetFrontend}/oauth-success?token=${jwtToken}&role=${user.accountType}`
       );
     } catch (error) {
       logger.error('OAUTH CALLBACK FAILED:', error.message);
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+      const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
+      return res.redirect(`${targetFrontend}/login?error=auth_failed`);
     }
   },
 
