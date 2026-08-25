@@ -131,12 +131,8 @@ app.get('/auth/google_oauth2/callback', (req, res, next) => {
     req.authInfo = user;
     req.user = user;
     if (req.query.state) {
-      try {
-        const statePayload = JSON.parse(req.query.state);
-        req.query = { ...req.query, ...statePayload };
-      } catch {
-        // ignore malformed state
-      }
+      const [mode, role] = req.query.state.split('_');
+      req.query = { ...req.query, mode, role };
     }
     next();
   })(req, res, next);

@@ -62,7 +62,7 @@ router.get('/auth/google_oauth2', (req, res, next) => {
   passport.authenticate('google_oauth2', {
     scope: ['email', 'profile'],
     session: false,
-    state: JSON.stringify({ mode, role })
+    state: `${mode}_${role}`
   })(req, res, next);
 });
 // Debug route to inspect OAuth config (safe: only exposes client IDs and callback URLs, not secrets)
