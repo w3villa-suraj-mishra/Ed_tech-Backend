@@ -24,11 +24,11 @@ const getTransporter = async () => {
   // 2. If user and pass exist without host/service (default to Gmail service)
   if (user && pass && user !== 'your_email@gmail.com' && pass !== 'your_app_password') {
     return nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: { user, pass },
-      tls: { rejectUnauthorized: false }
+      service: 'gmail',
+      auth: {
+        user: user.trim(),
+        pass: pass.trim()
+      }
     });
   }
 
