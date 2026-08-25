@@ -7,11 +7,13 @@ const configurePassport = () => {
   const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
 
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-    const googleCallback = process.env.GOOGLE_CALLBACK_URL || `${baseUrl}/auth/google_oauth2/callback`;
+    const defaultBackend = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://ed-tech-backend-2kha.vercel.app';
+    const backendUrl = process.env.BACKEND_URL || defaultBackend;
+    const googleCallback = process.env.GOOGLE_CALLBACK_URL || `${backendUrl}/auth/google_oauth2/callback`;
     const googleStrategy = new GoogleStrategy(
       {
-        clientID: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        clientID: process.env.GOOGLE_CLIENT_ID.trim(),
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET.trim(),
         callbackURL: googleCallback
       },
       (accessToken, refreshToken, profile, done) => {
