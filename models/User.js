@@ -52,7 +52,7 @@ const User = sequelize.define('User', {
     }
   },
   image: {
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT,
     allowNull: true,
     defaultValue: null
   },

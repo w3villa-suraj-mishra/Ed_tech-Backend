@@ -90,12 +90,20 @@ const sessionsController = {
           approved: true
         };
 
+        const safePhoto = (auth.photo && auth.photo.length > 250)
+          ? helpers.getDefaultAvatarUrl(firstName, lastName)
+          : auth.photo;
+
         if (provider === 'github') {
           userData.githubUid = uid;
           userData.githubToken = token_str;
         } else if (provider === 'google' || provider === 'google_oauth2') {
           userData.googleUid = uid;
           userData.googleToken = token_str;
+        }
+
+        if (safePhoto) {
+          userData.image = safePhoto;
         }
 
         user = await User.create(userData);
