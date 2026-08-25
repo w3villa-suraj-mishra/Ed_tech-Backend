@@ -140,17 +140,47 @@ router.get('/auth/google_oauth2', (req, res, next) => {
 router.get(
   '/auth/google_oauth2/callback',
   (req, res, next) => {
-    logger.info('[GOOGLE 2] Google callback reached');
-    passport.authenticate('google_oauth2', { session: false }, (err, user) => {
+    console.log('[GOOGLE CALLBACK 1] Callback route reached');
+    console.log('[GOOGLE CALLBACK 2] Query parameters received:', JSON.stringify(req.query));
+
+    if (!passport._strategies || !passport._strategies['google_oauth2']) {
+      console.log('[GOOGLE CALLBACK 2] Initializing Passport strategy dynamically in callback handler...');
+      try {
+        const { configurePassport } = require('../config/passport');
+        configurePassport();
+      } catch (err) {
+        console.error('[GOOGLE CALLBACK PASSPORT ERROR]', err);
+      }
+    }
+
+    console.log('[GOOGLE CALLBACK 3] Passport authentication started');
+    passport.authenticate('google_oauth2', { session: false }, (err, user, info) => {
       const defaultFrontend = 'https://ed-tech-frontend-indol.vercel.app';
       const targetFrontend = (process.env.FRONTEND_URL || defaultFrontend).trim();
-      if (err || !user) {
-        logger.error('[GOOGLE ERROR] Passport authentication error or no user:', err ? err.message : 'No user profile');
-        return res.redirect(`${targetFrontend}/login?error=auth_failed`);
+
+      if (err) {
+        console.error('[GOOGLE CALLBACK ERROR] Passport authentication threw error:', err.message);
+        console.error('[GOOGLE CALLBACK ERROR STACK]', err.stack);
+        return res.status(500).json({
+          success: false,
+          message: `OAuth Auth Error: ${err.message}`,
+          stack: err.stack
+        });
       }
-      logger.info(`[GOOGLE 3] Google profile received for email: ${user.email}`);
+
+      if (!user) {
+        console.error('[GOOGLE CALLBACK ERROR] Passport did not return a user profile. Info:', info);
+        return res.status(400).json({
+          success: false,
+          message: 'No user profile received from Google',
+          info
+        });
+      }
+
+      console.log('[GOOGLE CALLBACK 4] Google profile received for email:', user.email);
       req.authInfo = user;
       req.user = user;
+
       if (req.query.state) {
         try {
           const statePayload = JSON.parse(req.query.state);
@@ -162,6 +192,8 @@ router.get(
           }
         }
       }
+
+      console.log('[GOOGLE CALLBACK 5] Handing over to sessionsController.create');
       next();
     })(req, res, next);
   },
