@@ -97,16 +97,44 @@ router.get('/auth/github', (req, res, next) => {
     state: JSON.stringify({ mode, role })
   })(req, res, next);
 });
+router.get('/auth/google_oauth2', (req, res, next) => {
+  logger.info('[GOOGLE 1] OAuth request started');
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    logger.error('[GOOGLE ERROR] Google Client ID or Secret missing in env');
+    return res.status(400).json({
+      success: false,
+      message: "Google OAuth is not configured on the server. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend Environment Variables."
+    });
+  }
+  if (!passport._strategies || !passport._strategies['google_oauth2']) {
+    logger.error('[GOOGLE ERROR] Google OAuth strategy not initialized');
+    return res.status(500).json({
+      success: false,
+      message: "Google OAuth strategy is not initialized. Please verify GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel environment variables."
+    });
+  }
+  const mode = req.query.mode || 'signup';
+  const role = req.query.role || 'Student';
+  logger.info(`[GOOGLE 1] Initiating Passport auth with mode=${mode}, role=${role}`);
+  passport.authenticate('google_oauth2', {
+    scope: ['email', 'profile'],
+    session: false,
+    state: `${mode}_${role}`
+  })(req, res, next);
+});
+
 router.get(
   '/auth/google_oauth2/callback',
   (req, res, next) => {
+    logger.info('[GOOGLE 2] Google callback reached');
     passport.authenticate('google_oauth2', { session: false }, (err, user) => {
       const defaultFrontend = 'https://ed-tech-frontend-indol.vercel.app';
       const targetFrontend = (process.env.FRONTEND_URL || defaultFrontend).trim();
       if (err || !user) {
-        logger.error('Google OAuth auth error:', err ? err.message : 'No user profile');
+        logger.error('[GOOGLE ERROR] Passport authentication error or no user:', err ? err.message : 'No user profile');
         return res.redirect(`${targetFrontend}/login?error=auth_failed`);
       }
+      logger.info(`[GOOGLE 3] Google profile received for email: ${user.email}`);
       req.authInfo = user;
       req.user = user;
       if (req.query.state) {

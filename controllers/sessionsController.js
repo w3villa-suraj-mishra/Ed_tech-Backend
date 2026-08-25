@@ -30,8 +30,11 @@ const sessionsController = {
       const auth = req.authInfo || req.user;
       const paramsData = req.query;
 
+      logger.info('[GOOGLE 4] Entering sessionsController.create');
       if (!auth) {
-        return res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+        logger.error('[GOOGLE ERROR] No auth payload in req.authInfo or req.user');
+        const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
+        return res.redirect(`${targetFrontend}/login?error=auth_failed`);
       }
 
       const mode = paramsData.mode || 'signup';
@@ -42,24 +45,31 @@ const sessionsController = {
       const token_str = auth.accessToken;
       let email = auth.email;
 
+      logger.info(`[GOOGLE 4] Provider=${provider}, mode=${mode}, role=${role}, email=${email}`);
+
       // Get email for GitHub if not provided
       if (!email && provider === 'github' && token_str) {
         email = await sessionsController.fetchGithubPrimaryEmail(token_str);
       }
 
       if (!email) {
-        return res.redirect(`${process.env.FRONTEND_URL}/login?error=no_email`);
+        logger.error('[GOOGLE ERROR] No email found in OAuth profile');
+        const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
+        return res.redirect(`${targetFrontend}/login?error=no_email`);
       }
 
       // Find or create user
+      logger.info(`[GOOGLE 5] Performing DB lookup for email: ${email}`);
       let user = await User.findOne({
         where: { email }
       });
 
       if (user) {
+        logger.info(`[GOOGLE 5] Existing user found (ID: ${user.id}, accountType: ${user.accountType})`);
         // If role was explicitly selected during OAuth login (e.g. Instructor), update accountType
         if (role && role !== user.accountType) {
           await user.update({ accountType: role });
+          logger.info(`[GOOGLE 5] Updated existing user accountType to: ${role}`);
         }
 
         // Update social fields
@@ -74,6 +84,7 @@ const sessionsController = {
           await user.update({ image: auth.photo });
         }
       } else {
+        logger.info(`[GOOGLE 6] User does NOT exist. Creating new user record for ${email}`);
         const { firstName, lastName } = helpers.splitName(auth.displayName);
 
         const randomPassword = require('crypto').randomBytes(10).toString('hex');
@@ -85,7 +96,6 @@ const sessionsController = {
           password: randomPassword,
           passwordConfirmation: randomPassword,
           accountType: role || 'Student',
-          image: auth.photo || helpers.getDefaultAvatarUrl(firstName, lastName),
           active: true,
           approved: true
         };
@@ -107,7 +117,11 @@ const sessionsController = {
         }
 
         user = await User.create(userData);
+        logger.info(`[GOOGLE 7] New user created successfully (ID: ${user.id}, role: ${user.accountType})`);
       }
+
+      logger.info(`[GOOGLE 8] Account type detected: ${user.accountType}`);
+      logger.info('[GOOGLE 9] Generating JWT token');
 
       // Generate JWT token
       const jwtToken = jwt.sign(
@@ -120,12 +134,15 @@ const sessionsController = {
         { expiresIn: '7d' }
       );
 
+      logger.info('[GOOGLE 10] Session / JWT token created successfully');
       const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
+      
+      logger.info(`[GOOGLE 11] Redirecting to frontend: ${targetFrontend}/oauth-success`);
       return res.redirect(
         `${targetFrontend}/oauth-success?token=${jwtToken}&role=${user.accountType}`
       );
     } catch (error) {
-      logger.error('OAUTH CALLBACK FAILED:', error.message);
+      logger.error(`[GOOGLE ERROR] ${error.message}`, { stack: error.stack });
       const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
       return res.redirect(`${targetFrontend}/login?error=${encodeURIComponent(error.message)}`);
     }
