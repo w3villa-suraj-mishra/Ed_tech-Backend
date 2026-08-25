@@ -78,34 +78,63 @@ router.get('/auth/github', (req, res, next) => {
 });
 
 router.get('/auth/google_oauth2', (req, res, next) => {
-  logger.info('[GOOGLE 1] OAuth request started');
+  console.log('[GOOGLE DEBUG] OAuth route reached');
+  const mode = req.query.mode || 'signup';
+  const role = req.query.role || 'Student';
+  console.log('[GOOGLE DEBUG] mode:', mode);
+  console.log('[GOOGLE DEBUG] role:', role);
+  console.log('[GOOGLE DEBUG] GOOGLE_CLIENT_ID present:', Boolean(process.env.GOOGLE_CLIENT_ID));
+  console.log('[GOOGLE DEBUG] GOOGLE_CLIENT_SECRET present:', Boolean(process.env.GOOGLE_CLIENT_SECRET));
+  console.log('[GOOGLE DEBUG] GOOGLE_CALLBACK_URL present:', Boolean(process.env.GOOGLE_CALLBACK_URL));
+
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-    logger.error('[GOOGLE ERROR] Google Client ID or Secret missing in env');
+    console.error('[GOOGLE ERROR] Google Client ID or Secret missing in env');
     return res.status(400).json({
       success: false,
       message: "Google OAuth is not configured on the server. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend Environment Variables."
     });
   }
-  if (!passport._strategies || !passport._strategies['google_oauth2']) {
-    logger.info('[GOOGLE 1] Initializing Passport strategy dynamically...');
+
+  console.log('[GOOGLE DEBUG] Passport configuration started');
+  try {
     const { configurePassport } = require('../config/passport');
     configurePassport();
+    console.log('[GOOGLE DEBUG] Passport configuration completed');
+  } catch (error) {
+    console.error('[GOOGLE PASSPORT CONFIG ERROR]', error);
+    console.error(error.stack);
   }
-  if (!passport._strategies || !passport._strategies['google_oauth2']) {
-    logger.error('[GOOGLE ERROR] Google OAuth strategy could not be initialized');
+
+  const strategyExists = Boolean(passport._strategies && (passport._strategies['google_oauth2'] || passport._strategies['google']));
+  console.log('[GOOGLE DEBUG] Strategy google_oauth2 exists:', Boolean(passport._strategies?.google_oauth2));
+  console.log('[GOOGLE DEBUG] Strategy google exists:', Boolean(passport._strategies?.google));
+
+  if (!strategyExists) {
+    console.error('[GOOGLE ERROR] Google OAuth strategy is NOT registered after configuration');
     return res.status(500).json({
       success: false,
       message: "Google OAuth strategy is not initialized. Please verify GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel environment variables."
     });
   }
-  const mode = req.query.mode || 'signup';
-  const role = req.query.role || 'Student';
-  logger.info(`[GOOGLE 1] Initiating Passport auth with mode=${mode}, role=${role}`);
-  passport.authenticate('google_oauth2', {
-    scope: ['email', 'profile'],
-    session: false,
-    state: `${mode}_${role}`
-  })(req, res, next);
+
+  const strategyName = passport._strategies['google_oauth2'] ? 'google_oauth2' : 'google';
+  console.log(`[GOOGLE DEBUG] About to authenticate with strategy: ${strategyName}`);
+
+  try {
+    return passport.authenticate(strategyName, {
+      scope: ['email', 'profile'],
+      session: false,
+      state: `${mode}_${role}`
+    })(req, res, next);
+  } catch (error) {
+    console.error('[GOOGLE INIT ERROR]', error);
+    console.error('[GOOGLE INIT STACK]', error.stack);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+      stack: error.stack
+    });
+  }
 });
 
 router.get(
