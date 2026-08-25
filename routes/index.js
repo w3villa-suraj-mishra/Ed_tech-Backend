@@ -87,7 +87,12 @@ router.get('/auth/google_oauth2', (req, res, next) => {
     });
   }
   if (!passport._strategies || !passport._strategies['google_oauth2']) {
-    logger.error('[GOOGLE ERROR] Google OAuth strategy not initialized');
+    logger.info('[GOOGLE 1] Initializing Passport strategy dynamically...');
+    const { configurePassport } = require('../config/passport');
+    configurePassport();
+  }
+  if (!passport._strategies || !passport._strategies['google_oauth2']) {
+    logger.error('[GOOGLE ERROR] Google OAuth strategy could not be initialized');
     return res.status(500).json({
       success: false,
       message: "Google OAuth strategy is not initialized. Please verify GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Vercel environment variables."

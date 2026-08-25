@@ -123,31 +123,6 @@ app.get('/health', (req, res) => {
 // ==========================================
 // ROUTES
 // ==========================================
-app.get('/auth/google_oauth2/callback', (req, res, next) => {
-  passport.authenticate('google_oauth2', { session: false }, (err, user) => {
-    const defaultFrontend = 'https://ed-tech-frontend-indol.vercel.app';
-    const targetFrontend = (process.env.FRONTEND_URL || defaultFrontend).trim();
-    if (err || !user) {
-      logger.error('Google OAuth auth error:', err ? err.message : 'No user profile');
-      return res.redirect(`${targetFrontend}/login?error=auth_failed`);
-    }
-    req.authInfo = user;
-    req.user = user;
-    if (req.query.state) {
-      try {
-        const statePayload = JSON.parse(req.query.state);
-        req.query = { ...req.query, ...statePayload };
-      } catch (e) {
-        if (typeof req.query.state === 'string' && req.query.state.includes('_')) {
-          const [mode, role] = req.query.state.split('_');
-          req.query = { ...req.query, mode, role };
-        }
-      }
-    }
-    next();
-  })(req, res, next);
-}, require('./controllers/sessionsController').create);
-
 app.use('/', routes);
 app.use('/admin', adminRoutes);
 
