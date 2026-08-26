@@ -74,20 +74,35 @@ router.get('/auth/github', (req, res, next) => {
     });
   }
 
-  if (!passport._strategies || !passport._strategies['github']) {
-    try {
-      const { configurePassport } = require('../config/passport');
-      configurePassport();
-    } catch (err) {
-      logger.error('[GITHUB PASSPORT INIT ERROR]', err);
-    }
+  try {
+    const { configurePassport } = require('../config/passport');
+    configurePassport();
+  } catch (err) {
+    logger.error('[GITHUB PASSPORT INIT ERROR]', err);
   }
 
-  passport.authenticate('github', {
-    scope: ['user:email'],
-    session: false,
-    state: JSON.stringify({ mode, role })
-  })(req, res, next);
+  if (!passport._strategies || !passport._strategies['github']) {
+    logger.error('[GITHUB ERROR] GitHub strategy is not initialized in Passport');
+    return res.status(500).json({
+      success: false,
+      message: "GitHub OAuth strategy is not initialized. Please verify GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET environment variables."
+    });
+  }
+
+  try {
+    return passport.authenticate('github', {
+      scope: ['user:email'],
+      session: false,
+      state: `${mode}_${role}`
+    })(req, res, next);
+  } catch (error) {
+    logger.error('[GITHUB INIT ERROR]', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+      stack: error.stack
+    });
+  }
 });
 
 router.get('/auth/google_oauth2', (req, res, next) => {
