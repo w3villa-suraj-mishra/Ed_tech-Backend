@@ -66,7 +66,10 @@ router.get('/auth/github', (req, res, next) => {
   const mode = req.query.mode || 'signup';
   const role = req.query.role || 'Student';
 
-  if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
+  const githubClientId = String(process.env.GITHUB_CLIENT_ID || '').trim();
+  const githubClientSecret = String(process.env.GITHUB_CLIENT_SECRET || '').trim();
+
+  if (!githubClientId || !githubClientSecret) {
     logger.error('[GITHUB ERROR] GitHub Client ID or Secret missing in env');
     return res.status(400).json({
       success: false,
@@ -77,19 +80,15 @@ router.get('/auth/github', (req, res, next) => {
   try {
     const { configurePassport } = require('../config/passport');
     configurePassport();
-  } catch (err) {
-    logger.error('[GITHUB PASSPORT INIT ERROR]', err);
-  }
 
-  if (!passport._strategies || !passport._strategies['github']) {
-    logger.error('[GITHUB ERROR] GitHub strategy is not initialized in Passport');
-    return res.status(500).json({
-      success: false,
-      message: "GitHub OAuth strategy is not initialized. Please verify GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET environment variables."
-    });
-  }
+    if (!passport._strategies || !passport._strategies['github']) {
+      logger.error('[GITHUB ERROR] GitHub strategy is not initialized in Passport');
+      return res.status(500).json({
+        success: false,
+        message: "GitHub OAuth strategy is not initialized. Please verify GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET environment variables."
+      });
+    }
 
-  try {
     return passport.authenticate('github', {
       scope: ['user:email'],
       session: false,
@@ -99,7 +98,7 @@ router.get('/auth/github', (req, res, next) => {
     logger.error('[GITHUB INIT ERROR]', error);
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || "Failed to initialize GitHub authentication",
       stack: error.stack
     });
   }
