@@ -68,6 +68,14 @@ router.get('/auth/github', (req, res, next) => {
       message: "GitHub OAuth is not configured on the server. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in backend Environment Variables."
     });
   }
+  if (!passport._strategies || !passport._strategies['github']) {
+    try {
+      const { configurePassport } = require('../config/passport');
+      configurePassport();
+    } catch (err) {
+      console.error('[GITHUB PASSPORT INIT ERROR]', err);
+    }
+  }
   const mode = req.query.mode || 'signup';
   const role = req.query.role || 'Student';
   passport.authenticate('github', {
