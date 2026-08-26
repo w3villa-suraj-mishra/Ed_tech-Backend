@@ -116,8 +116,18 @@ const sessionsController = {
           userData.image = safePhoto;
         }
 
-        user = await User.create(userData);
-        logger.info(`[GOOGLE 7] New user created successfully (ID: ${user.id}, role: ${user.accountType})`);
+        try {
+          user = await User.create(userData);
+          logger.info(`[GOOGLE 7] New user created successfully (ID: ${user.id}, role: ${user.accountType})`);
+        } catch (createErr) {
+          logger.error(`[GOOGLE CREATE ERROR] User.create failed for ${email}: ${createErr.message}`, {
+            name: createErr.name,
+            errors: createErr.errors,
+            original: createErr.original,
+            stack: createErr.stack
+          });
+          throw createErr;
+        }
       }
 
       logger.info(`[GOOGLE 8] Account type detected: ${user.accountType}`);
@@ -142,7 +152,12 @@ const sessionsController = {
         `${targetFrontend}/oauth-success?token=${jwtToken}&role=${user.accountType}`
       );
     } catch (error) {
-      logger.error(`[GOOGLE ERROR] ${error.message}`, { stack: error.stack });
+      logger.error(`[GOOGLE ERROR] ${error.message}`, { 
+        name: error.name,
+        errors: error.errors,
+        original: error.original,
+        stack: error.stack 
+      });
       const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
       return res.redirect(`${targetFrontend}/login?error=${encodeURIComponent(error.message)}`);
     }
