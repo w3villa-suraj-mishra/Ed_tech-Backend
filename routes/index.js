@@ -62,22 +62,27 @@ router.get('/auth/debug', (req, res) => {
 });
 
 router.get('/auth/github', (req, res, next) => {
+  logger.info('[GITHUB 1] OAuth request started');
+  const mode = req.query.mode || 'signup';
+  const role = req.query.role || 'Student';
+
   if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
+    logger.error('[GITHUB ERROR] GitHub Client ID or Secret missing in env');
     return res.status(400).json({
       success: false,
       message: "GitHub OAuth is not configured on the server. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in backend Environment Variables."
     });
   }
+
   if (!passport._strategies || !passport._strategies['github']) {
     try {
       const { configurePassport } = require('../config/passport');
       configurePassport();
     } catch (err) {
-      console.error('[GITHUB PASSPORT INIT ERROR]', err);
+      logger.error('[GITHUB PASSPORT INIT ERROR]', err);
     }
   }
-  const mode = req.query.mode || 'signup';
-  const role = req.query.role || 'Student';
+
   passport.authenticate('github', {
     scope: ['user:email'],
     session: false,
@@ -202,6 +207,54 @@ router.get(
       }
 
       console.log('[GOOGLE CALLBACK 5] Handing over to sessionsController.create');
+      next();
+    })(req, res, next);
+  },
+  sessionsController.create
+);
+
+router.get(
+  '/auth/github/callback',
+  (req, res, next) => {
+    logger.info('[GITHUB 2] Callback reached');
+    if (!passport._strategies || !passport._strategies['github']) {
+      try {
+        const { configurePassport } = require('../config/passport');
+        configurePassport();
+      } catch (err) {
+        logger.error('[GITHUB PASSPORT CALLBACK INIT ERROR]', err);
+      }
+    }
+    passport.authenticate('github', { session: false }, (err, user, info) => {
+      const defaultFrontend = 'https://ed-tech-frontend-indol.vercel.app';
+      const targetFrontend = (process.env.FRONTEND_URL || defaultFrontend).trim();
+
+      if (err) {
+        logger.error('[GITHUB CALLBACK ERROR]', err.message);
+        return res.redirect(`${targetFrontend}/login?error=${encodeURIComponent(err.message)}`);
+      }
+
+      if (!user) {
+        logger.error('[GITHUB CALLBACK ERROR] No GitHub profile received', info);
+        return res.redirect(`${targetFrontend}/login?error=auth_failed`);
+      }
+
+      logger.info('[GITHUB 3] GitHub profile received');
+      req.authInfo = user;
+      req.user = user;
+
+      if (req.query.state) {
+        try {
+          const statePayload = JSON.parse(req.query.state);
+          req.query = { ...req.query, ...statePayload };
+        } catch (e) {
+          if (typeof req.query.state === 'string' && req.query.state.includes('_')) {
+            const [mode, role] = req.query.state.split('_');
+            req.query = { ...req.query, mode, role };
+          }
+        }
+      }
+
       next();
     })(req, res, next);
   },

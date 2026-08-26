@@ -30,9 +30,13 @@ const sessionsController = {
       const auth = req.authInfo || req.user;
       const paramsData = req.query;
 
-      logger.info('[GOOGLE 4] Entering sessionsController.create');
+      const provider = auth?.provider;
+      const isGithub = provider === 'github';
+      const logPrefix = isGithub ? '[GITHUB' : '[GOOGLE';
+
+      logger.info(`${logPrefix} 4] Entering sessionsController.create`);
       if (!auth) {
-        logger.error('[GOOGLE ERROR] No auth payload in req.authInfo or req.user');
+        logger.error(`${logPrefix} ERROR] No auth payload in req.authInfo or req.user`);
         const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
         return res.redirect(`${targetFrontend}/login?error=auth_failed`);
       }
@@ -40,58 +44,63 @@ const sessionsController = {
       const mode = paramsData.mode || 'signup';
       const role = paramsData.role || 'Student';
 
-      const provider = auth.provider;
       const uid = auth.uid;
       const token_str = auth.accessToken;
       let email = auth.email;
 
-      logger.info(`[GOOGLE 4] Provider=${provider}, mode=${mode}, role=${role}, email=${email}`);
-
-      // Get email for GitHub if not provided
-      if (!email && provider === 'github' && token_str) {
+      // Get email for GitHub if missing from profile
+      if (!email && isGithub && token_str) {
+        logger.info('[GITHUB 4] Email missing in profile, retrieving primary email from GitHub API');
         email = await sessionsController.fetchGithubPrimaryEmail(token_str);
       }
 
+      if (email) {
+        email = String(email).toLowerCase().trim();
+      }
+
+      logger.info(`${logPrefix} 4] Provider=${provider}, mode=${mode}, role=${role}, email=${email}`);
+
       if (!email) {
-        logger.error('[GOOGLE ERROR] No email found in OAuth profile');
+        logger.error(`${logPrefix} ERROR] No verified email found in OAuth profile`);
         const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
         return res.redirect(`${targetFrontend}/login?error=no_email`);
       }
 
       // Find or create user
-      logger.info(`[GOOGLE 5] Performing DB lookup for email: ${email}`);
+      logger.info(`${logPrefix} 5] User lookup started for email: ${email}`);
       let user = await User.findOne({
         where: { email }
       });
 
       if (user) {
-        logger.info(`[GOOGLE 5] Existing user found (ID: ${user.id}, accountType: ${user.accountType})`);
-        // If role was explicitly selected during OAuth login (e.g. Instructor), update accountType
-        if (role && role !== user.accountType) {
+        logger.info(`${logPrefix} 6] Existing user found (ID: ${user.id}, stored accountType: ${user.accountType})`);
+        
+        // For signup mode, if accountType is different, update it if explicitly requested; for login, preserve stored accountType
+        if (mode === 'signup' && role && role !== user.accountType) {
           await user.update({ accountType: role });
-          logger.info(`[GOOGLE 5] Updated existing user accountType to: ${role}`);
+          logger.info(`${logPrefix} 6] Updated existing user accountType to selected signup role: ${role}`);
         }
 
-        // Update social fields
-        if (provider === 'github' && !user.githubUid) {
+        // Update social fields without breaking existing accounts
+        if (isGithub && !user.githubUid) {
           await user.update({ githubUid: String(uid || '') });
         } else if ((provider === 'google' || provider === 'google_oauth2') && !user.googleUid) {
           await user.update({ googleUid: String(uid || '') });
         }
 
-        // Update image if available
+        // Update profile image if missing
         if (auth.photo && !user.image) {
           await user.update({ image: auth.photo });
         }
       } else {
-        logger.info(`[GOOGLE 6] User does NOT exist. Creating new user record for ${email}`);
+        logger.info(`${logPrefix} 6] New user detected. Creating new user record for ${email}`);
         const { firstName, lastName } = helpers.splitName(auth.displayName);
 
         const randomPassword = require('crypto').randomBytes(10).toString('hex');
 
         const userData = {
-          firstName,
-          lastName,
+          firstName: firstName || 'User',
+          lastName: lastName || '',
           email,
           password: randomPassword,
           passwordConfirmation: randomPassword,
@@ -104,7 +113,7 @@ const sessionsController = {
           ? (auth.photo.length > 250 ? helpers.getDefaultAvatarUrl(firstName, lastName) : auth.photo)
           : helpers.getDefaultAvatarUrl(firstName, lastName);
 
-        if (provider === 'github') {
+        if (isGithub) {
           userData.githubUid = String(uid || '');
         } else if (provider === 'google' || provider === 'google_oauth2') {
           userData.googleUid = String(uid || '');
@@ -114,9 +123,9 @@ const sessionsController = {
 
         try {
           user = await User.create(userData);
-          logger.info(`[GOOGLE 7] New user created successfully (ID: ${user.id}, role: ${user.accountType})`);
+          logger.info(`${logPrefix} 7] User created successfully (ID: ${user.id}, accountType: ${user.accountType})`);
         } catch (createErr) {
-          logger.error(`[GOOGLE CREATE ERROR] User.create failed for ${email}: ${createErr.message}`, {
+          logger.error(`${logPrefix} CREATE ERROR] User.create failed for ${email}: ${createErr.message}`, {
             name: createErr.name,
             errors: createErr.errors,
             original: createErr.original,
@@ -126,10 +135,10 @@ const sessionsController = {
         }
       }
 
-      logger.info(`[GOOGLE 8] Account type detected: ${user.accountType}`);
-      logger.info('[GOOGLE 9] Generating JWT token');
+      logger.info(`${logPrefix} 8] Account type detected: ${user.accountType}`);
+      logger.info(`${logPrefix} 9] JWT generated`);
 
-      // Generate JWT token
+      // Generate JWT token using existing JWT architecture
       const jwtToken = jwt.sign(
         {
           user_id: user.id,
@@ -140,15 +149,14 @@ const sessionsController = {
         { expiresIn: '7d' }
       );
 
-      logger.info('[GOOGLE 10] Session / JWT token created successfully');
+      logger.info(`${logPrefix} 10] Redirecting to OAuthSuccess`);
       const targetFrontend = (process.env.FRONTEND_URL || 'https://ed-tech-frontend-indol.vercel.app').trim();
       
-      logger.info(`[GOOGLE 11] Redirecting to frontend: ${targetFrontend}/oauth-success`);
       return res.redirect(
         `${targetFrontend}/oauth-success?token=${jwtToken}&role=${user.accountType}`
       );
     } catch (error) {
-      logger.error(`[GOOGLE ERROR] ${error.message}`, { 
+      logger.error(`[OAUTH ERROR] ${error.message}`, { 
         name: error.name,
         errors: error.errors,
         original: error.original,
