@@ -89,20 +89,22 @@ router.get('/auth/github', (req, res, next) => {
       });
     }
 
-    return passport.authenticate('github', {
+    const authenticateGithub = passport.authenticate('github', {
       scope: ['user:email'],
       session: false,
       state: `${mode}_${role}`
-    })(req, res, (err) => {
+    });
+
+    return authenticateGithub(req, res, (err) => {
       if (err) {
-        logger.error('[GITHUB AUTHENTICATE ERROR]', err);
+        logger.error('[GITHUB AUTHENTICATE ERROR]', err.message);
         return res.status(500).json({
           success: false,
-          message: err.message,
+          message: `GitHub Authenticate Error: ${err.message}`,
           stack: err.stack
         });
       }
-      next();
+      return next();
     });
   } catch (error) {
     logger.error('[GITHUB INIT ERROR]', error);
