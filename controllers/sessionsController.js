@@ -74,9 +74,9 @@ const sessionsController = {
 
         // Update social fields
         if (provider === 'github' && !user.githubUid) {
-          await user.update({ githubUid: uid, githubToken: token_str });
+          await user.update({ githubUid: String(uid || '') });
         } else if ((provider === 'google' || provider === 'google_oauth2') && !user.googleUid) {
-          await user.update({ googleUid: uid, googleToken: token_str });
+          await user.update({ googleUid: String(uid || '') });
         }
 
         // Update image if available
@@ -100,21 +100,17 @@ const sessionsController = {
           approved: true
         };
 
-        const safePhoto = (auth.photo && auth.photo.length > 250)
-          ? helpers.getDefaultAvatarUrl(firstName, lastName)
-          : auth.photo;
+        const safePhoto = auth.photo
+          ? (auth.photo.length > 250 ? helpers.getDefaultAvatarUrl(firstName, lastName) : auth.photo)
+          : helpers.getDefaultAvatarUrl(firstName, lastName);
 
         if (provider === 'github') {
-          userData.githubUid = uid;
-          userData.githubToken = token_str;
+          userData.githubUid = String(uid || '');
         } else if (provider === 'google' || provider === 'google_oauth2') {
-          userData.googleUid = uid;
-          userData.googleToken = token_str;
+          userData.googleUid = String(uid || '');
         }
 
-        if (safePhoto) {
-          userData.image = safePhoto;
-        }
+        userData.image = safePhoto;
 
         try {
           user = await User.create(userData);
