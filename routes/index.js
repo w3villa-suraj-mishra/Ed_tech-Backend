@@ -9,6 +9,7 @@ const paymentController = require('../controllers/paymentController');
 const contactController = require('../controllers/contactController');
 const notificationController = require('../controllers/notificationController');
 const articleController = require('../controllers/articleController');
+const logger = require('../utils/logger');
 const { passport } = require('../config/passport');
 const {
   authenticateUser,
