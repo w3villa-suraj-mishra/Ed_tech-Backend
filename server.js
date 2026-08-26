@@ -137,10 +137,12 @@ app.use((req, res) => {
 // Error handler
 app.use((err, req, res, next) => {
   logger.error('Unhandled error:', err.message);
+  console.error('[UNHANDLED SERVER ERROR STACK]', err.stack);
   res.status(500).json({
     success: false,
-    message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    message: err.message || 'Internal server error',
+    error: err.message,
+    stack: err.stack
   });
 });
 
