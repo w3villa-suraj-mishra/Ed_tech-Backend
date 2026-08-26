@@ -93,7 +93,17 @@ router.get('/auth/github', (req, res, next) => {
       scope: ['user:email'],
       session: false,
       state: `${mode}_${role}`
-    })(req, res, next);
+    })(req, res, (err) => {
+      if (err) {
+        logger.error('[GITHUB AUTHENTICATE ERROR]', err);
+        return res.status(500).json({
+          success: false,
+          message: err.message,
+          stack: err.stack
+        });
+      }
+      next();
+    });
   } catch (error) {
     logger.error('[GITHUB INIT ERROR]', error);
     return res.status(500).json({
