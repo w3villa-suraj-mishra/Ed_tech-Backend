@@ -53,10 +53,8 @@ router.post('/auth/changepassword', authenticateUser, authController.changePassw
 router.get('/auth/debug', (req, res) => {
   return res.json({
     googleClientId: process.env.GOOGLE_CLIENT_ID || null,
-    googleClientSecretPresent: Boolean(process.env.GOOGLE_CLIENT_SECRET),
     googleCallback: process.env.GOOGLE_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/auth/google_oauth2/callback`,
     githubClientId: process.env.GITHUB_CLIENT_ID || null,
-    githubClientSecretPresent: Boolean(process.env.GITHUB_CLIENT_SECRET),
     githubCallback: process.env.GITHUB_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/auth/github/callback`,
     backendUrl: process.env.BACKEND_URL || 'http://localhost:5000',
     frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000'
@@ -68,16 +66,11 @@ router.get('/auth/github', (req, res, next) => {
   const mode = req.query.mode || 'signup';
   const role = req.query.role || 'Student';
 
-  const githubClientId = String(process.env.GITHUB_CLIENT_ID || '').trim();
-  const githubClientSecret = String(process.env.GITHUB_CLIENT_SECRET || '').trim();
-
-  if (!githubClientId || !githubClientSecret) {
+  if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
     logger.error('[GITHUB ERROR] GitHub Client ID or Secret missing in env');
     return res.status(400).json({
       success: false,
-      message: "GitHub OAuth is not configured on the server. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in backend Environment Variables on Vercel.",
-      hasClientId: Boolean(githubClientId),
-      hasClientSecret: Boolean(githubClientSecret)
+      message: "GitHub OAuth is not configured on the server. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in backend Environment Variables."
     });
   }
 
@@ -92,7 +85,7 @@ router.get('/auth/github', (req, res, next) => {
     logger.error('[GITHUB ERROR] GitHub strategy is not initialized in Passport');
     return res.status(500).json({
       success: false,
-      message: "GitHub OAuth strategy is not initialized. Please verify GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET environment variables on Vercel."
+      message: "GitHub OAuth strategy is not initialized. Please verify GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET environment variables."
     });
   }
 
