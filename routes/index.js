@@ -53,8 +53,10 @@ router.post('/auth/changepassword', authenticateUser, authController.changePassw
 router.get('/auth/debug', (req, res) => {
   return res.json({
     googleClientId: process.env.GOOGLE_CLIENT_ID || null,
+    googleClientSecretPresent: Boolean(process.env.GOOGLE_CLIENT_SECRET),
     googleCallback: process.env.GOOGLE_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/auth/google_oauth2/callback`,
     githubClientId: process.env.GITHUB_CLIENT_ID || null,
+    githubClientSecretPresent: Boolean(process.env.GITHUB_CLIENT_SECRET),
     githubCallback: process.env.GITHUB_CALLBACK_URL || `${process.env.BACKEND_URL || 'http://localhost:5000'}/auth/github/callback`,
     backendUrl: process.env.BACKEND_URL || 'http://localhost:5000',
     frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000'
