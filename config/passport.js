@@ -43,27 +43,29 @@ const configurePassport = () => {
 
     if (githubClientId && githubClientSecret) {
       const githubCallback = process.env.GITHUB_CALLBACK_URL || `${backendUrl}/auth/github/callback`;
-      passport.use(
-        new GitHubStrategy(
-          {
-            clientID: githubClientId,
-            clientSecret: githubClientSecret,
-            callbackURL: githubCallback,
-            scope: ['user:email']
-          },
-          (accessToken, refreshToken, profile, done) => {
-            done(null, {
-              provider: 'github',
-              uid: profile.id,
-              email: profile.emails?.[0]?.value,
-              displayName: profile.displayName,
-              photo: profile.photos?.[0]?.value,
-              accessToken
-            });
-          }
-        )
+      const githubStrategy = new GitHubStrategy(
+        {
+          clientID: githubClientId,
+          clientSecret: githubClientSecret,
+          callbackURL: githubCallback,
+          scope: ['user:email']
+        },
+        (accessToken, refreshToken, profile, done) => {
+          done(null, {
+            provider: 'github',
+            uid: profile.id,
+            email: profile.emails?.[0]?.value,
+            displayName: profile.displayName,
+            photo: profile.photos?.[0]?.value,
+            accessToken
+          });
+        }
       );
+      githubStrategy.name = 'github';
+      passport.use(githubStrategy);
       logger.info(`GitHub OAuth callback URL: ${githubCallback}`);
+    } else {
+      logger.warn('GitHub OAuth credentials missing or invalid in environment variables');
     }
   } catch (err) {
     logger.error('Error configuring Passport:', err.message);
