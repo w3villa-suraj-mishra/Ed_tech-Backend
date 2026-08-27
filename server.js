@@ -120,6 +120,34 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'Server is running' });
 });
 
+// Public DB migration trigger endpoint for Vercel production
+app.get('/run-migrations', async (req, res) => {
+  try {
+    await sequelize.authenticate();
+    await sequelize.query(`
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_practice_questions_testCategory') THEN 
+          CREATE TYPE "public"."enum_practice_questions_testCategory" AS ENUM('MCQ', 'Coding', 'Topic Practice', 'Mock Test', 'Interview Test', 'Daily Quiz'); 
+        END IF; 
+      END $$;
+    `);
+    await sequelize.query(`ALTER TABLE "practice_questions" ADD COLUMN IF NOT EXISTS "testCategory" "public"."enum_practice_questions_testCategory" NOT NULL DEFAULT 'MCQ';`);
+    await sequelize.query(`ALTER TABLE "practice_questions" ADD COLUMN IF NOT EXISTS "answerDetails" JSON;`);
+    await sequelize.query(`
+      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Multiple Select';
+      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'True/False';
+      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Short Answer';
+      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Fill in the Blank';
+    `).catch(() => {});
+    await sequelize.sync({ alter: true });
+    return res.status(200).json({ success: true, message: 'Database migration and sync executed successfully!' });
+  } catch (err) {
+    console.error('Migration endpoint error:', err);
+    return res.status(500).json({ success: false, error: err.message, stack: err.stack });
+  }
+});
+
 // ==========================================
 // ROUTES
 // ==========================================
@@ -151,34 +179,6 @@ app.use((err, req, res, next) => {
 // ==========================================
 
 const PORT = process.env.PORT || 5000;
-
-// Public DB migration trigger endpoint for Vercel production
-app.get('/run-migrations', async (req, res) => {
-  try {
-    await sequelize.authenticate();
-    await sequelize.query(`
-      DO $$ 
-      BEGIN 
-        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_practice_questions_testCategory') THEN 
-          CREATE TYPE "public"."enum_practice_questions_testCategory" AS ENUM('MCQ', 'Coding', 'Topic Practice', 'Mock Test', 'Interview Test', 'Daily Quiz'); 
-        END IF; 
-      END $$;
-    `);
-    await sequelize.query(`ALTER TABLE "practice_questions" ADD COLUMN IF NOT EXISTS "testCategory" "public"."enum_practice_questions_testCategory" NOT NULL DEFAULT 'MCQ';`);
-    await sequelize.query(`ALTER TABLE "practice_questions" ADD COLUMN IF NOT EXISTS "answerDetails" JSON;`);
-    await sequelize.query(`
-      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Multiple Select';
-      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'True/False';
-      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Short Answer';
-      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Fill in the Blank';
-    `).catch(() => {});
-    await sequelize.sync({ alter: true });
-    return res.status(200).json({ success: true, message: 'Database migration and sync executed successfully!' });
-  } catch (err) {
-    console.error('Migration endpoint error:', err);
-    return res.status(500).json({ success: false, error: err.message, stack: err.stack });
-  }
-});
 
 if (process.env.VERCEL) {
   sequelize.authenticate()
