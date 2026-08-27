@@ -16,7 +16,7 @@ const PracticeTest = sequelize.define('PracticeTest', {
     allowNull: true,
   },
   testType: {
-    type: DataTypes.ENUM('Daily Quiz', 'Topic Practice', 'Course Test', 'Mock Test', 'Interview Test'),
+    type: DataTypes.ENUM('MCQ', 'Coding', 'Topic Practice', 'Mock Test', 'Interview Test', 'Daily Quiz', 'Course Test'),
     allowNull: false,
     defaultValue: 'Mock Test',
   },
