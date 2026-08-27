@@ -95,6 +95,7 @@ const practiceController = {
       const {
         title,
         type,
+        testCategory,
         categoryId,
         topicId,
         difficulty,
@@ -103,6 +104,7 @@ const practiceController = {
         negativeMarks,
         tags,
         options,
+        answerDetails,
         courseId,
         scope,
         status,
@@ -138,6 +140,8 @@ const practiceController = {
       const question = await PracticeQuestion.create({
         title,
         type: type || 'MCQ',
+        testCategory: testCategory || 'MCQ',
+        answerDetails: answerDetails || null,
         categoryId: categoryId || null,
         topicId: topicId || null,
         difficulty: difficulty || 'Easy',
@@ -154,8 +158,8 @@ const practiceController = {
         interviewDetails: interviewDetails || null,
       });
 
-      // Handle MCQ Options
-      if ((type === 'MCQ' || type === 'True/False' || !type) && Array.isArray(options)) {
+      // Handle MCQ / Multiple Select / True/False Options
+      if (['MCQ', 'Multiple Select', 'True/False'].includes(type || 'MCQ') && Array.isArray(options)) {
         const optionRecords = options.map((opt) => ({
           questionId: question.id,
           optionText: opt.optionText || opt.text,
@@ -200,7 +204,7 @@ const practiceController = {
 
       await question.update(updateData);
 
-      if (question.type === 'MCQ' && Array.isArray(options)) {
+      if (['MCQ', 'Multiple Select', 'True/False'].includes(question.type) && Array.isArray(options)) {
         await PracticeOption.destroy({ where: { questionId: id } });
         const optionRecords = options.map((opt) => ({
           questionId: question.id,

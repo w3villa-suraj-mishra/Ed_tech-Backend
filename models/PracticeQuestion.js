@@ -12,9 +12,18 @@ const PracticeQuestion = sequelize.define('PracticeQuestion', {
     allowNull: false,
   },
   type: {
-    type: DataTypes.ENUM('MCQ', 'Coding', 'Interview'),
+    type: DataTypes.ENUM('MCQ', 'Multiple Select', 'True/False', 'Short Answer', 'Fill in the Blank', 'Coding', 'Interview'),
     allowNull: false,
     defaultValue: 'MCQ',
+  },
+  testCategory: {
+    type: DataTypes.ENUM('MCQ', 'Coding', 'Topic Practice', 'Mock Test', 'Interview Test', 'Daily Quiz'),
+    allowNull: false,
+    defaultValue: 'MCQ',
+  },
+  answerDetails: {
+    type: DataTypes.JSON,
+    allowNull: true,
   },
   categoryId: {
     type: DataTypes.INTEGER,
