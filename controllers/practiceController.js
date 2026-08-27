@@ -257,17 +257,25 @@ const practiceController = {
         where.courseId = courseId;
       }
 
+      const include = [];
+      if (PracticeCategory) {
+        try { include.push({ model: PracticeCategory, as: 'category' }); } catch (e) {}
+      }
+      if (PracticeTopic) {
+        try { include.push({ model: PracticeTopic, as: 'topic' }); } catch (e) {}
+      }
+      if (PracticeQuestion) {
+        try { include.push({ model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] } }); } catch (e) {}
+      }
+
       const tests = await PracticeTest.findAll({
         where,
-        include: [
-          { model: PracticeCategory, as: 'category' },
-          { model: PracticeTopic, as: 'topic' },
-          { model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] } }
-        ],
+        include,
         order: [['createdAt', 'DESC']],
       });
       return res.status(200).json({ success: true, data: tests });
     } catch (error) {
+      logger.error('GET TESTS ERROR:', error.message);
       return res.status(500).json({ success: false, message: error.message });
     }
   },
