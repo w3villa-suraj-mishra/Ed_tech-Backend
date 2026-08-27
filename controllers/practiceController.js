@@ -690,14 +690,21 @@ const practiceController = {
       });
       const ownedCourseIds = ownedCourses.map(c => c.id);
 
+      const whereConditions = [
+        { createdBy: instructorId }
+      ];
+
+      if (ownedCourseIds.length > 0) {
+        whereConditions.push({ courseId: { [Op.in]: ownedCourseIds } });
+      }
+
       const where = {
-        [Op.or]: [
-          { createdBy: instructorId },
-          { courseId: { [Op.in]: ownedCourseIds.length > 0 ? ownedCourseIds : [-1] } }
-        ]
+        [Op.or]: whereConditions
       };
 
-      if (courseId) where.courseId = courseId;
+      if (courseId) {
+        where.courseId = Number(courseId);
+      }
       if (type) where.type = type;
       if (difficulty) where.difficulty = difficulty;
       if (search) where.title = { [Op.like]: `%${search}%` };
