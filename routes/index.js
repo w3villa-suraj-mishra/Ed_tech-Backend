@@ -535,4 +535,35 @@ router.post('/payment/webhook', paymentController.handleWebhook);
 // ==========================================
 router.post('/reach/contact', contactController.contact);
 
+// ==========================================
+// PRACTICE ROUTES (Public Categories + Protected Practice Access)
+// ==========================================
+const practiceController = require('../controllers/practiceController');
+
+// Categories & Topics
+router.get('/practice/categories', practiceController.getCategories);
+router.post('/admin/practice/categories', authenticateUser, isAdmin, practiceController.createCategory);
+router.post('/admin/practice/topics', authenticateUser, isAdmin, practiceController.createTopic);
+
+// Question Bank (Admin)
+router.get('/admin/practice/questions', authenticateUser, isAdmin, practiceController.getQuestions);
+router.post('/admin/practice/questions', authenticateUser, isAdmin, practiceController.createQuestion);
+router.put('/admin/practice/questions/:id', authenticateUser, isAdmin, practiceController.updateQuestion);
+router.delete('/admin/practice/questions/:id', authenticateUser, isAdmin, practiceController.deleteQuestion);
+router.post('/admin/practice/questions/bulk', authenticateUser, isAdmin, practiceController.bulkUploadQuestions);
+
+// Test Builder (Admin)
+router.get('/admin/practice/tests', authenticateUser, isAdmin, practiceController.getTests);
+router.post('/admin/practice/tests', authenticateUser, isAdmin, practiceController.createTest);
+router.delete('/admin/practice/tests/:id', authenticateUser, isAdmin, practiceController.deleteTest);
+
+// Student Practice Center (Requires Authentication, FREE for all logged-in users)
+router.get('/practice/overview', authenticateUser, practiceController.getPracticeOverview);
+router.get('/practice/daily-quiz', authenticateUser, practiceController.getDailyQuiz);
+router.get('/practice/topic-questions', authenticateUser, practiceController.getTopicPracticeQuestions);
+router.get('/practice/tests', authenticateUser, practiceController.getTests); // Student view published tests
+router.post('/practice/submit', authenticateUser, practiceController.submitAttempt);
+router.get('/practice/attempts', authenticateUser, practiceController.getUserAttempts);
+router.get('/practice/attempts/:id', authenticateUser, practiceController.getAttemptDetails);
+
 module.exports = router;

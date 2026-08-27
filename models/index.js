@@ -98,9 +98,50 @@ CourseProgressVideo.belongsTo(CourseProgress, { foreignKey: 'courseProgressId' }
 LiveSession.hasMany(LiveChatMessage, { foreignKey: 'liveSessionId', onDelete: 'CASCADE' });
 LiveChatMessage.belongsTo(LiveSession, { foreignKey: 'liveSessionId' });
 
+// Practice models
+const PracticeCategory = require('./PracticeCategory');
+const PracticeTopic = require('./PracticeTopic');
+const PracticeQuestion = require('./PracticeQuestion');
+const PracticeOption = require('./PracticeOption');
+const PracticeTest = require('./PracticeTest');
+const PracticeTestQuestion = require('./PracticeTestQuestion');
+const PracticeAttempt = require('./PracticeAttempt');
+const PracticeAttemptAnswer = require('./PracticeAttemptAnswer');
+
 // Enrollment association for enrolled courses
 User.hasMany(Enrollment, { foreignKey: 'userId' });
 Enrollment.belongsTo(Course, { foreignKey: 'courseId' });
+
+// Practice Associations
+PracticeCategory.hasMany(PracticeTopic, { foreignKey: 'categoryId', as: 'topics', onDelete: 'CASCADE' });
+PracticeTopic.belongsTo(PracticeCategory, { foreignKey: 'categoryId', as: 'category' });
+
+PracticeCategory.hasMany(PracticeQuestion, { foreignKey: 'categoryId', as: 'questions' });
+PracticeQuestion.belongsTo(PracticeCategory, { foreignKey: 'categoryId', as: 'category' });
+
+PracticeTopic.hasMany(PracticeQuestion, { foreignKey: 'topicId', as: 'questions' });
+PracticeQuestion.belongsTo(PracticeTopic, { foreignKey: 'topicId', as: 'topic' });
+
+PracticeQuestion.hasMany(PracticeOption, { foreignKey: 'questionId', as: 'options', onDelete: 'CASCADE' });
+PracticeOption.belongsTo(PracticeQuestion, { foreignKey: 'questionId', as: 'question' });
+
+PracticeTest.belongsToMany(PracticeQuestion, { through: PracticeTestQuestion, foreignKey: 'testId', otherKey: 'questionId', as: 'questions' });
+PracticeQuestion.belongsToMany(PracticeTest, { through: PracticeTestQuestion, foreignKey: 'questionId', otherKey: 'testId', as: 'tests' });
+
+PracticeTestQuestion.belongsTo(PracticeQuestion, { foreignKey: 'questionId', as: 'question' });
+PracticeTestQuestion.belongsTo(PracticeTest, { foreignKey: 'testId', as: 'test' });
+
+User.hasMany(PracticeAttempt, { foreignKey: 'userId', as: 'practiceAttempts', onDelete: 'CASCADE' });
+PracticeAttempt.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+PracticeTest.hasMany(PracticeAttempt, { foreignKey: 'testId', as: 'attempts', onDelete: 'SET NULL' });
+PracticeAttempt.belongsTo(PracticeTest, { foreignKey: 'testId', as: 'test' });
+
+PracticeAttempt.hasMany(PracticeAttemptAnswer, { foreignKey: 'attemptId', as: 'answers', onDelete: 'CASCADE' });
+PracticeAttemptAnswer.belongsTo(PracticeAttempt, { foreignKey: 'attemptId', as: 'attempt' });
+
+PracticeAttemptAnswer.belongsTo(PracticeQuestion, { foreignKey: 'questionId', as: 'question' });
+PracticeAttemptAnswer.belongsTo(PracticeOption, { foreignKey: 'selectedOptionId', as: 'selectedOption' });
 
 module.exports = {
   User,
@@ -122,5 +163,13 @@ module.exports = {
   LiveChatMessage,
   ContactUs,
   CoursePriceAudit,
-  Article
+  Article,
+  PracticeCategory,
+  PracticeTopic,
+  PracticeQuestion,
+  PracticeOption,
+  PracticeTest,
+  PracticeTestQuestion,
+  PracticeAttempt,
+  PracticeAttemptAnswer
 };
