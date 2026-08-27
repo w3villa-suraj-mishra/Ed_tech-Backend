@@ -1,3 +1,4 @@
+const models = require('../models');
 const {
   PracticeCategory,
   PracticeTopic,
@@ -9,7 +10,7 @@ const {
   PracticeAttemptAnswer,
   User,
   Course
-} = require('../models');
+} = models;
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 
