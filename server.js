@@ -152,19 +152,32 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-let isDbSynced = false;
-
-app.use(async (req, res, next) => {
-  if (!isDbSynced && process.env.DATABASE_URL) {
-    try {
-      await sequelize.authenticate();
-      await sequelize.sync({ alter: true });
-      isDbSynced = true;
-    } catch (err) {
-      console.error('DB Sync Error:', err.message);
-    }
+// Explicit DB migration trigger endpoint for Vercel production
+app.get('/admin/run-migrations', async (req, res) => {
+  try {
+    await sequelize.authenticate();
+    await sequelize.query(`
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_practice_questions_testCategory') THEN 
+          CREATE TYPE "public"."enum_practice_questions_testCategory" AS ENUM('MCQ', 'Coding', 'Topic Practice', 'Mock Test', 'Interview Test', 'Daily Quiz'); 
+        END IF; 
+      END $$;
+    `);
+    await sequelize.query(`ALTER TABLE "practice_questions" ADD COLUMN IF NOT EXISTS "testCategory" "public"."enum_practice_questions_testCategory" NOT NULL DEFAULT 'MCQ';`);
+    await sequelize.query(`ALTER TABLE "practice_questions" ADD COLUMN IF NOT EXISTS "answerDetails" JSON;`);
+    await sequelize.query(`
+      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Multiple Select';
+      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'True/False';
+      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Short Answer';
+      ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Fill in the Blank';
+    `).catch(() => {});
+    await sequelize.sync({ alter: true });
+    return res.status(200).json({ success: true, message: 'Database migration and sync executed successfully!' });
+  } catch (err) {
+    console.error('Migration endpoint error:', err);
+    return res.status(500).json({ success: false, error: err.message, stack: err.stack });
   }
-  next();
 });
 
 if (process.env.VERCEL) {
