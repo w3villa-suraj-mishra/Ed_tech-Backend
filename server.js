@@ -153,12 +153,14 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 if (process.env.VERCEL) {
-  // On Vercel serverless, do not call server.listen() or sync DB synchronously on top-level
-  sequelize.authenticate().catch((err) => console.error('DB Auth error:', err.message));
+  // On Vercel serverless, sync DB with alter to ensure missing columns are created
+  sequelize.authenticate()
+    .then(() => sequelize.sync({ alter: true }))
+    .catch((err) => console.error('DB Auth/Sync error:', err.message));
 } else {
   const startServer = async () => {
     try {
-      await sequelize.sync({ alter: false });
+      await sequelize.sync({ alter: true });
       logger.info('Database synchronized successfully');
     } catch (error) {
       logger.error('Database connection warning (server started without DB):', error.message);
