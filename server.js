@@ -152,8 +152,22 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
+let isDbSynced = false;
+
+app.use(async (req, res, next) => {
+  if (!isDbSynced && process.env.DATABASE_URL) {
+    try {
+      await sequelize.authenticate();
+      await sequelize.sync({ alter: true });
+      isDbSynced = true;
+    } catch (err) {
+      console.error('DB Sync Error:', err.message);
+    }
+  }
+  next();
+});
+
 if (process.env.VERCEL) {
-  // On Vercel serverless, sync DB with alter to ensure missing columns are created
   sequelize.authenticate()
     .then(() => sequelize.sync({ alter: true }))
     .catch((err) => console.error('DB Auth/Sync error:', err.message));
