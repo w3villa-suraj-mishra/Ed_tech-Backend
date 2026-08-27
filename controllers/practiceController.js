@@ -345,12 +345,12 @@ const practiceController = {
       return res.status(200).json({
         success: true,
         data: {
-          dailyQuizCount: dailyQuizCount || 1,
-          topicPracticeCount: topicPracticeCount || 5,
-          courseTestCount: courseTestCount || 2,
-          mockTestCount: mockTestCount || 3,
-          codingCount: codingCount || 10,
-          interviewCount: interviewCount || 15,
+          dailyQuizCount: dailyQuizCount || 0,
+          topicPracticeCount: topicPracticeCount || 0,
+          courseTestCount: courseTestCount || 0,
+          mockTestCount: mockTestCount || 0,
+          codingCount: codingCount || 0,
+          interviewCount: interviewCount || 0,
           userAttemptsCount: userAttemptsCount || 0,
         }
       });
