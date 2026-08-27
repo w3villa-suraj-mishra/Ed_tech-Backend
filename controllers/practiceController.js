@@ -78,6 +78,7 @@ const practiceController = {
           { model: PracticeOption, as: 'options' },
           { model: PracticeCategory, as: 'category' },
           { model: PracticeTopic, as: 'topic' },
+          { model: Course, as: 'course', attributes: ['id', 'courseName'] },
         ],
         order: [['createdAt', 'DESC']],
       });
@@ -103,6 +104,7 @@ const practiceController = {
         tags,
         options,
         courseId,
+        scope,
         status,
         codingDetails,
         interviewDetails
@@ -112,9 +114,17 @@ const practiceController = {
         return res.status(400).json({ success: false, message: 'Question title is required' });
       }
 
+      // Explicit Scope Validation
+      const targetScope = scope === 'COURSE' ? 'COURSE' : 'GLOBAL';
+      const targetCourseId = targetScope === 'COURSE' ? (courseId || null) : null;
+
+      if (targetScope === 'COURSE' && !targetCourseId) {
+        return res.status(400).json({ success: false, message: 'Course selection is required for Course questions' });
+      }
+
       // Security check for instructors
-      if (courseId && req.user?.accountType === 'Instructor') {
-        const course = await Course.findByPk(courseId);
+      if (targetCourseId && req.user?.accountType === 'Instructor') {
+        const course = await Course.findByPk(targetCourseId);
         if (!course) {
           return res.status(404).json({ success: false, message: 'Course not found' });
         }
@@ -124,7 +134,6 @@ const practiceController = {
       }
 
       const userRole = req.user?.accountType === 'Instructor' ? 'INSTRUCTOR' : 'ADMIN';
-      const isCourseScope = !!courseId;
 
       const question = await PracticeQuestion.create({
         title,
@@ -136,10 +145,10 @@ const practiceController = {
         marks: marks || 1,
         negativeMarks: negativeMarks || 0,
         tags: tags || [],
-        courseId: isCourseScope ? courseId : null,
+        courseId: targetCourseId,
         createdBy: req.user ? req.user.id : null,
         createdByRole: userRole,
-        scope: isCourseScope ? 'COURSE' : 'GLOBAL',
+        scope: targetScope,
         status: status || 'published',
         codingDetails: codingDetails || null,
         interviewDetails: interviewDetails || null,
@@ -156,7 +165,10 @@ const practiceController = {
       }
 
       const fullQuestion = await PracticeQuestion.findByPk(question.id, {
-        include: [{ model: PracticeOption, as: 'options' }],
+        include: [
+          { model: PracticeOption, as: 'options' },
+          { model: Course, as: 'course', attributes: ['id', 'courseName'] }
+        ],
       });
 
       return res.status(201).json({ success: true, data: fullQuestion });
@@ -172,7 +184,20 @@ const practiceController = {
       const question = await PracticeQuestion.findByPk(id);
       if (!question) return res.status(404).json({ success: false, message: 'Question not found' });
 
-      const { options, ...updateData } = req.body;
+      const { options, scope, courseId, ...updateData } = req.body;
+
+      if (scope) {
+        const targetScope = scope === 'COURSE' ? 'COURSE' : 'GLOBAL';
+        const targetCourseId = targetScope === 'COURSE' ? (courseId || question.courseId || null) : null;
+        if (targetScope === 'COURSE' && !targetCourseId) {
+          return res.status(400).json({ success: false, message: 'Course selection is required for Course questions' });
+        }
+        updateData.scope = targetScope;
+        updateData.courseId = targetCourseId;
+      } else if (courseId !== undefined) {
+        updateData.courseId = courseId;
+      }
+
       await question.update(updateData);
 
       if (question.type === 'MCQ' && Array.isArray(options)) {
@@ -186,7 +211,10 @@ const practiceController = {
       }
 
       const updatedFull = await PracticeQuestion.findByPk(id, {
-        include: [{ model: PracticeOption, as: 'options' }],
+        include: [
+          { model: PracticeOption, as: 'options' },
+          { model: Course, as: 'course', attributes: ['id', 'courseName'] }
+        ],
       });
 
       return res.status(200).json({ success: true, data: updatedFull });
