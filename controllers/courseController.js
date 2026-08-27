@@ -351,12 +351,21 @@ const courseController = {
         thumbnail = await uploadService.handleFileUpload(req.file, false);
       }
 
+      // Sanitize price (convert strings like "8,500" or "₹8,500" into numeric 8500)
+      let numericPrice = 0;
+      if (price !== undefined && price !== null && price !== '') {
+        const cleanedPrice = String(price).replace(/[^0-9.]/g, '');
+        const parsed = parseFloat(cleanedPrice);
+        numericPrice = isNaN(parsed) ? 0 : Math.round(parsed);
+      }
+
       // Create course
       const course = await Course.create({
         courseName,
         courseDescription,
         whatYouWillLearn,
-        price,
+        price: numericPrice,
+        originalPrice: numericPrice,
         tag,
         instructions,
         categoryId: category,
