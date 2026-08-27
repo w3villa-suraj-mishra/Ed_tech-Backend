@@ -58,7 +58,7 @@ const practiceController = {
 
   getQuestions: async (req, res) => {
     try {
-      const { type, categoryId, topicId, difficulty, status, search } = req.query;
+      const { type, categoryId, topicId, difficulty, status, search, scope, courseId } = req.query;
       const where = {};
 
       if (type) where.type = type;
@@ -66,6 +66,8 @@ const practiceController = {
       if (topicId) where.topicId = topicId;
       if (difficulty) where.difficulty = difficulty;
       if (status) where.status = status;
+      if (scope) where.scope = scope;
+      if (courseId) where.courseId = courseId;
       if (search) {
         where.title = { [Op.like]: `%${search}%` };
       }
@@ -98,6 +100,37 @@ const practiceController = {
         explanation,
         marks,
         negativeMarks,
+        options,
+        courseId,
+        status,
+        codingDetails,
+        interviewDetails
+      } = req.body;
+
+      if (!title) {
+        return res.status(400).json({ success: false, message: 'Question title is required' });
+      }
+
+      const userRole = req.user?.accountType === 'Instructor' ? 'INSTRUCTOR' : 'ADMIN';
+      const isCourseScope = !!courseId;
+
+      const question = await PracticeQuestion.create({
+        title,
+        type: type || 'MCQ',
+        categoryId: categoryId || null,
+        topicId: topicId || null,
+        difficulty: difficulty || 'Easy',
+        explanation: explanation || '',
+        marks: marks || 1,
+        negativeMarks: negativeMarks || 0,
+        courseId: isCourseScope ? courseId : null,
+        createdBy: req.user.id,
+        createdByRole: userRole,
+        scope: isCourseScope ? 'COURSE' : 'GLOBAL',
+        status: status || 'published',
+        codingDetails,
+        interviewDetails
+      });
         tags,
         courseId,
         status,
@@ -228,10 +261,16 @@ const practiceController = {
 
   getTests: async (req, res) => {
     try {
-      const { testType, status } = req.query;
+      const { testType, status, scope, courseId } = req.query;
       const where = {};
       if (testType) where.testType = testType;
       if (status) where.status = status;
+      if (scope) {
+        where.scope = scope;
+      }
+      if (courseId) {
+        where.courseId = courseId;
+      }
 
       const tests = await PracticeTest.findAll({
         where,
@@ -272,13 +311,19 @@ const practiceController = {
         return res.status(400).json({ success: false, message: 'Title and Test Type are required' });
       }
 
+      const userRole = req.user?.accountType === 'Instructor' ? 'INSTRUCTOR' : 'ADMIN';
+      const isCourseScope = !!courseId;
+
       const test = await PracticeTest.create({
         title,
         description,
         testType,
         categoryId: categoryId || null,
         topicId: topicId || null,
-        courseId: courseId || null,
+        courseId: isCourseScope ? courseId : null,
+        createdBy: req.user ? req.user.id : null,
+        createdByRole: userRole,
+        scope: isCourseScope ? 'COURSE' : 'GLOBAL',
         duration: duration || 15,
         totalMarks: totalMarks || 10,
         passingPercentage: passingPercentage || 40,
@@ -287,7 +332,6 @@ const practiceController = {
         randomizeOptions: randomizeOptions !== undefined ? randomizeOptions : true,
         allowReattempt: allowReattempt !== undefined ? allowReattempt : true,
         status: status || 'published',
-        createdBy: req.user ? req.user.id : null,
       });
 
       if (Array.isArray(questionIds) && questionIds.length > 0) {
@@ -333,12 +377,12 @@ const practiceController = {
         interviewCount,
         userAttemptsCount
       ] = await Promise.all([
-        PracticeTest.count({ where: { testType: 'Daily Quiz', status: 'published' } }),
-        PracticeQuestion.count({ where: { status: 'published', categoryId: { [Op.ne]: null } } }),
-        PracticeTest.count({ where: { testType: 'Course Test', status: 'published' } }),
-        PracticeTest.count({ where: { testType: 'Mock Test', status: 'published' } }),
-        PracticeQuestion.count({ where: { type: 'Coding', status: 'published' } }),
-        PracticeQuestion.count({ where: { type: 'Interview', status: 'published' } }),
+        PracticeTest.count({ where: { testType: 'Daily Quiz', status: 'published', scope: 'GLOBAL' } }),
+        PracticeQuestion.count({ where: { status: 'published', scope: 'GLOBAL', categoryId: { [Op.ne]: null } } }),
+        PracticeTest.count({ where: { testType: 'Course Test', status: 'published', scope: 'GLOBAL' } }),
+        PracticeTest.count({ where: { testType: 'Mock Test', status: 'published', scope: 'GLOBAL' } }),
+        PracticeQuestion.count({ where: { type: 'Coding', status: 'published', scope: 'GLOBAL' } }),
+        PracticeQuestion.count({ where: { type: 'Interview', status: 'published', scope: 'GLOBAL' } }),
         PracticeAttempt.count({ where: { userId: req.user.id } }),
       ]);
 
@@ -594,6 +638,89 @@ const practiceController = {
       if (!attempt) return res.status(404).json({ success: false, message: 'Attempt not found' });
       return res.status(200).json({ success: true, data: attempt });
     } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // ================= COURSE-SPECIFIC PRACTICE (INSTRUCTOR & ENROLLED STUDENTS) =================
+
+  // Fetch tests for a specific course
+  getCoursePractice: async (req, res) => {
+    try {
+      const { courseId } = req.params;
+      if (!courseId) {
+        return res.status(400).json({ success: false, message: 'Course ID is required' });
+      }
+
+      // Fetch all published tests for this course
+      const tests = await PracticeTest.findAll({
+        where: { courseId, scope: 'COURSE', status: 'published' },
+        include: [
+          {
+            model: PracticeQuestion,
+            as: 'questions',
+            through: { attributes: ['order'] },
+            include: [{ model: PracticeOption, as: 'options' }]
+          }
+        ],
+        order: [['createdAt', 'DESC']]
+      });
+
+      return res.status(200).json({ success: true, data: tests });
+    } catch (error) {
+      logger.error('GET COURSE PRACTICE FAILED:', error.message);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Instructor Create Course Practice Test with ownership verification
+  createInstructorCourseTest: async (req, res) => {
+    try {
+      const { courseId, title, description, testType, duration, totalMarks, passingPercentage, questionIds } = req.body;
+      const instructorId = req.user.id;
+
+      if (!courseId || !title) {
+        return res.status(400).json({ success: false, message: 'Course ID and title are required' });
+      }
+
+      // Security check: Verify course exists and is owned by logged-in instructor
+      const course = await Course.findByPk(courseId);
+      if (!course) {
+        return res.status(404).json({ success: false, message: 'Course not found' });
+      }
+
+      // Compare instructorId (checking both instructorId / instructor_id fields)
+      if (course.instructorId !== instructorId && course.instructor_id !== instructorId && req.user.accountType !== 'Admin' && req.user.accountType !== 'Superadmin') {
+        return res.status(403).json({ success: false, message: 'Forbidden: You can only create practice tests for your own courses' });
+      }
+
+      const test = await PracticeTest.create({
+        title,
+        description: description || '',
+        testType: testType || 'Course Test',
+        courseId,
+        duration: duration || 15,
+        totalMarks: totalMarks || 10,
+        passingPercentage: passingPercentage || 40,
+        numberOfQuestions: Array.isArray(questionIds) ? questionIds.length : 0,
+        status: 'published',
+        createdBy: instructorId,
+        createdByRole: 'INSTRUCTOR',
+        scope: 'COURSE'
+      });
+
+      if (Array.isArray(questionIds) && questionIds.length > 0) {
+        const testQuestions = questionIds.map((qId, idx) => ({
+          testId: test.id,
+          questionId: qId,
+          order: idx + 1
+        }));
+        await PracticeTestQuestion.bulkCreate(testQuestions);
+      }
+
+      return res.status(201).json({ success: true, data: test, message: 'Course Practice Test published successfully' });
+    } catch (error) {
+      logger.error('CREATE INSTRUCTOR TEST FAILED:', error.message);
       return res.status(500).json({ success: false, message: error.message });
     }
   }

@@ -571,6 +571,10 @@ if (practiceController) {
   router.post('/practice/submit', authenticateUser, practiceController.submitAttempt);
   router.get('/practice/attempts', authenticateUser, practiceController.getUserAttempts);
   router.get('/practice/attempts/:id', authenticateUser, practiceController.getAttemptDetails);
+
+  // Course-Specific Practice Endpoints
+  router.get('/practice/course/:courseId', authenticateUser, practiceController.getCoursePractice);
+  router.post('/instructor/practice/course-test', authenticateUser, isInstructor, practiceController.createInstructorCourseTest);
 }
 
 module.exports = router;

@@ -61,6 +61,16 @@ const PracticeQuestion = sequelize.define('PracticeQuestion', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  createdByRole: {
+    type: DataTypes.STRING, // 'ADMIN' or 'INSTRUCTOR'
+    allowNull: false,
+    defaultValue: 'ADMIN',
+  },
+  scope: {
+    type: DataTypes.ENUM('GLOBAL', 'COURSE'),
+    allowNull: false,
+    defaultValue: 'GLOBAL',
+  },
   // Extra fields for Coding Problems
   codingDetails: {
     type: DataTypes.JSON,

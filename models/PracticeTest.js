@@ -76,6 +76,16 @@ const PracticeTest = sequelize.define('PracticeTest', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  createdByRole: {
+    type: DataTypes.STRING, // 'ADMIN' or 'INSTRUCTOR'
+    allowNull: false,
+    defaultValue: 'ADMIN',
+  },
+  scope: {
+    type: DataTypes.ENUM('GLOBAL', 'COURSE'),
+    allowNull: false,
+    defaultValue: 'GLOBAL',
+  },
 }, {
   tableName: 'practice_tests',
   timestamps: true,
