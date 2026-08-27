@@ -140,7 +140,6 @@ app.get('/run-migrations', async (req, res) => {
       ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Short Answer';
       ALTER TYPE "public"."enum_practice_questions_type" ADD VALUE IF NOT EXISTS 'Fill in the Blank';
     `).catch(() => {});
-    await sequelize.sync({ alter: true });
     return res.status(200).json({ success: true, message: 'Database migration and sync executed successfully!' });
   } catch (err) {
     console.error('Migration endpoint error:', err);
