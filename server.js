@@ -152,8 +152,8 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Explicit DB migration trigger endpoint for Vercel production
-app.get('/admin/run-migrations', async (req, res) => {
+// Public DB migration trigger endpoint for Vercel production
+app.get('/run-migrations', async (req, res) => {
   try {
     await sequelize.authenticate();
     await sequelize.query(`
