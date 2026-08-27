@@ -58,10 +58,11 @@ const practiceController = {
 
   getQuestions: async (req, res) => {
     try {
-      const { type, categoryId, topicId, difficulty, status, search, scope, courseId } = req.query;
+      const { type, testCategory, categoryId, topicId, difficulty, status, search, scope, courseId } = req.query;
       const where = {};
 
       if (type) where.type = type;
+      if (testCategory) where.testCategory = testCategory;
       if (categoryId) where.categoryId = categoryId;
       if (topicId) where.topicId = topicId;
       if (difficulty) where.difficulty = difficulty;
@@ -69,7 +70,8 @@ const practiceController = {
       if (scope) where.scope = scope;
       if (courseId) where.courseId = courseId;
       if (search) {
-        where.title = { [Op.like]: `%${search}%` };
+        const searchOp = Op.iLike || Op.like;
+        where.title = { [searchOp]: `%${search}%` };
       }
 
       const questions = await PracticeQuestion.findAll({
