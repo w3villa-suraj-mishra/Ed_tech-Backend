@@ -329,14 +329,21 @@ const courseController = {
       const instructorId = req.user.id;
       let thumbnail = null;
 
-      // Find category
-      const categoryData = await Category.findByPk(category);
-      if (!categoryData) {
-        return res.status(404).json({
-          success: false,
-          message: 'Category not found'
-        });
+      // Find category (by ID, or fallback by name/first available category)
+      let categoryData = null;
+      if (category) {
+        if (!isNaN(category)) {
+          categoryData = await Category.findByPk(Number(category));
+        }
+        if (!categoryData) {
+          categoryData = await Category.findOne({ where: { name: category } });
+        }
       }
+      if (!categoryData) {
+        categoryData = await Category.findOne();
+      }
+
+      const targetCategoryId = categoryData ? categoryData.id : null;
 
       // Handle thumbnail upload
       if (req.file) {
@@ -368,7 +375,7 @@ const courseController = {
         originalPrice: numericPrice,
         tag,
         instructions,
-        categoryId: category,
+        categoryId: targetCategoryId,
         instructorId,
         status: status || 'Draft',
         thumbnail
