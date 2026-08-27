@@ -551,11 +551,12 @@ if (practiceController) {
   router.post('/admin/practice/categories', authenticateUser, isAdmin, practiceController.createCategory);
   router.post('/admin/practice/topics', authenticateUser, isAdmin, practiceController.createTopic);
 
-  // Question Bank (Admin)
-  router.get('/admin/practice/questions', authenticateUser, isAdmin, practiceController.getQuestions);
-  router.post('/admin/practice/questions', authenticateUser, isAdmin, practiceController.createQuestion);
-  router.put('/admin/practice/questions/:id', authenticateUser, isAdmin, practiceController.updateQuestion);
-  router.delete('/admin/practice/questions/:id', authenticateUser, isAdmin, practiceController.deleteQuestion);
+  // Question Bank
+  router.get('/admin/practice/questions', authenticateUser, practiceController.getQuestions);
+  router.post('/admin/practice/questions', authenticateUser, practiceController.createQuestion);
+  router.post('/instructor/practice/questions', authenticateUser, isInstructor, practiceController.createQuestion);
+  router.put('/admin/practice/questions/:id', authenticateUser, practiceController.updateQuestion);
+  router.delete('/admin/practice/questions/:id', authenticateUser, practiceController.deleteQuestion);
   router.post('/admin/practice/questions/bulk', authenticateUser, isAdmin, practiceController.bulkUploadQuestions);
 
   // Test Builder (Admin)
