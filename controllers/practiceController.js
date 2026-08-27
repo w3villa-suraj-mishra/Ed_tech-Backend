@@ -237,6 +237,19 @@ const practiceController = {
     }
   },
 
+  bulkDeleteQuestions: async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ success: false, message: 'No question IDs provided for bulk deletion' });
+      }
+      await PracticeQuestion.destroy({ where: { id: ids } });
+      return res.status(200).json({ success: true, message: `${ids.length} question(s) deleted successfully` });
+    } catch (error) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
   // Bulk CSV Upload
   bulkUploadQuestions: async (req, res) => {
     try {

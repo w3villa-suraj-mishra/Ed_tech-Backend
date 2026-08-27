@@ -557,6 +557,7 @@ if (practiceController) {
   router.post('/instructor/practice/questions', authenticateUser, isInstructor, practiceController.createQuestion);
   router.put('/admin/practice/questions/:id', authenticateUser, practiceController.updateQuestion);
   router.delete('/admin/practice/questions/:id', authenticateUser, practiceController.deleteQuestion);
+  router.post('/admin/practice/questions/bulk-delete', authenticateUser, practiceController.bulkDeleteQuestions);
   router.post('/admin/practice/questions/bulk', authenticateUser, isAdmin, practiceController.bulkUploadQuestions);
 
   // Test Builder (Admin)
