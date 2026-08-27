@@ -352,7 +352,8 @@ const practiceController = {
       }
 
       const userRole = req.user?.accountType === 'Instructor' ? 'INSTRUCTOR' : 'ADMIN';
-      const isCourseScope = !!courseId;
+      const targetScope = req.body.scope || (courseId ? 'COURSE' : 'GLOBAL');
+      const targetCourseId = targetScope === 'COURSE' ? courseId : null;
 
       const test = await PracticeTest.create({
         title,
@@ -360,10 +361,10 @@ const practiceController = {
         testType,
         categoryId: categoryId || null,
         topicId: topicId || null,
-        courseId: isCourseScope ? courseId : null,
+        courseId: targetCourseId,
         createdBy: req.user ? req.user.id : null,
         createdByRole: userRole,
-        scope: isCourseScope ? 'COURSE' : 'GLOBAL',
+        scope: targetScope,
         duration: duration || 15,
         totalMarks: totalMarks || 10,
         passingPercentage: passingPercentage || 40,
