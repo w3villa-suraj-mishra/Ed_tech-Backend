@@ -179,11 +179,7 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-if (process.env.VERCEL) {
-  sequelize.authenticate()
-    .then(() => sequelize.sync({ alter: true }))
-    .catch((err) => console.error('DB Auth/Sync error:', err.message));
-} else {
+if (!process.env.VERCEL) {
   const startServer = async () => {
     try {
       await sequelize.sync({ alter: true });
