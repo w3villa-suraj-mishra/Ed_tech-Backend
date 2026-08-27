@@ -538,7 +538,12 @@ router.post('/reach/contact', contactController.contact);
 // ==========================================
 // PRACTICE ROUTES (Public Categories + Protected Practice Access)
 // ==========================================
-const practiceController = require('../controllers/practiceController');
+let practiceController;
+try {
+  practiceController = require('../controllers/practiceController');
+} catch (err) {
+  logger.error('[PRACTICE CONTROLLER LOAD ERROR]', err.message);
+}
 
 // Categories & Topics
 router.get('/practice/categories', practiceController.getCategories);
