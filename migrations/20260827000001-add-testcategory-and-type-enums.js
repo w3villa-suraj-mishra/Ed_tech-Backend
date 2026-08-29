@@ -45,6 +45,17 @@ module.exports = {
       ALTER TYPE "enum_practice_tests_testType" ADD VALUE IF NOT EXISTS 'Daily Quiz';
       ALTER TYPE "enum_practice_tests_testType" ADD VALUE IF NOT EXISTS 'Course Test';
     `).catch(() => {});
+
+    // Update enum_practice_attempts_testType values in postgres if missing
+    await queryInterface.sequelize.query(`
+      ALTER TYPE "enum_practice_attempts_testType" ADD VALUE IF NOT EXISTS 'MCQ';
+      ALTER TYPE "enum_practice_attempts_testType" ADD VALUE IF NOT EXISTS 'Coding';
+      ALTER TYPE "enum_practice_attempts_testType" ADD VALUE IF NOT EXISTS 'Topic Practice';
+      ALTER TYPE "enum_practice_attempts_testType" ADD VALUE IF NOT EXISTS 'Mock Test';
+      ALTER TYPE "enum_practice_attempts_testType" ADD VALUE IF NOT EXISTS 'Interview Test';
+      ALTER TYPE "enum_practice_attempts_testType" ADD VALUE IF NOT EXISTS 'Daily Quiz';
+      ALTER TYPE "enum_practice_attempts_testType" ADD VALUE IF NOT EXISTS 'Course Test';
+    `).catch(() => {});
   },
 
   down: async (queryInterface, Sequelize) => {

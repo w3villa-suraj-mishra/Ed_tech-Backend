@@ -16,9 +16,9 @@ const PracticeAttempt = sequelize.define('PracticeAttempt', {
     allowNull: true, // Null for standalone daily quiz or topic practice
   },
   testType: {
-    type: DataTypes.ENUM('Daily Quiz', 'Topic Practice', 'Course Test', 'Mock Test', 'Coding Problem', 'Interview Question'),
+    type: DataTypes.ENUM('MCQ', 'Coding', 'Topic Practice', 'Mock Test', 'Interview Test', 'Daily Quiz', 'Course Test', 'Coding Problem', 'Interview Question'),
     allowNull: false,
-    defaultValue: 'Daily Quiz',
+    defaultValue: 'MCQ',
   },
   totalQuestions: {
     type: DataTypes.INTEGER,
