@@ -2,6 +2,7 @@ const stripeSecretKey = process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder_ke
 const stripe = require('stripe')(stripeSecretKey);
 const { Enrollment, Course } = require('../models');
 const { PLAN_TYPES, PLAN_CONFIG, calculatePlanPrice } = require('../config/plans');
+const { calculateCoursePrice } = require('../services/pricingService');
 const logger = require('../utils/logger');
 
 /**
@@ -149,8 +150,6 @@ const createPaymentOrder = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
-const { calculateCoursePrice } = require('../services/pricingService');
 
 /**
  * Helper function to activate user course plan enrollments
