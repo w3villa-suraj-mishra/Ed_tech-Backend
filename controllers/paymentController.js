@@ -95,9 +95,65 @@ const createPaymentOrder = async (req, res) => {
     }
 
     // Handle Silver / Gold plan calculations on backend
+    const { couponCode } = req.body;
+    let validatedOffer = null;
+    let validatedDiscount = 0;
+
+    if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
+      const normalizedCode = couponCode.trim().toUpperCase();
+      const { Offer, OfferRedemption } = require('../models');
+      const offer = await Offer.findOne({
+        where: { code: normalizedCode },
+        include: [{ model: Course, as: 'courses', attributes: ['id'] }]
+      });
+
+      if (offer && offer.status !== 'DISABLED' && offer.status !== 'DRAFT') {
+        const now = new Date();
+        const startAt = new Date(offer.startAt);
+        const endAt = new Date(offer.endAt);
+
+        if (now >= startAt && now <= endAt) {
+          // Check scope
+          let isEligible = true;
+          if (offer.scope === 'SELECTED_COURSES') {
+            const eligibleIds = offer.courses ? offer.courses.map(c => c.id) : [];
+            isEligible = validCourses.every(c => eligibleIds.includes(c.id));
+          }
+
+          // Check max total uses
+          if (offer.maxUses !== null && offer.totalUses >= offer.maxUses) {
+            isEligible = false;
+          }
+
+          // Check user max uses
+          if (userId) {
+            const userCount = await OfferRedemption.count({ where: { offerId: offer.id, userId } });
+            const maxPerUser = offer.maxUsesPerUser !== null ? offer.maxUsesPerUser : 1;
+            if (userCount >= maxPerUser) {
+              isEligible = false;
+            }
+          }
+
+          if (isEligible) {
+            validatedOffer = offer;
+          }
+        }
+      }
+    }
+
     const purchaseItems = validCourses.map((course) => {
       const pricing = calculateCoursePrice(course);
-      const payablePrice = calculatePlanPrice(course, targetPlan);
+      let payablePrice = calculatePlanPrice(course, targetPlan);
+
+      if (validatedOffer) {
+        if (validatedOffer.discountType === 'PERCENTAGE') {
+          const disc = Math.round((payablePrice * validatedOffer.discountValue) / 100);
+          payablePrice = Math.max(0, payablePrice - disc);
+        } else {
+          payablePrice = Math.max(0, payablePrice - Math.round(validatedOffer.discountValue));
+        }
+      }
+
       const discountPercentage = targetPlan === PLAN_TYPES.SILVER ? 30 : pricing.discountPercentage;
 
       return {
@@ -112,7 +168,7 @@ const createPaymentOrder = async (req, res) => {
       price_data: {
         currency: 'inr',
         product_data: {
-          name: `${course.courseName} (${targetPlan.toUpperCase()} Plan)`,
+          name: `${course.courseName} (${targetPlan.toUpperCase()} Plan)${validatedOffer ? ` - Coupon ${validatedOffer.code}` : ''}`,
           description: targetPlan === PLAN_TYPES.SILVER ? '1 Year Full Course Access' : 'Lifetime Full Course Access',
           images: course.thumbnail ? [course.thumbnail] : [],
         },
@@ -135,6 +191,8 @@ const createPaymentOrder = async (req, res) => {
           userId: String(userId),
           plan: targetPlan,
           courseIds: JSON.stringify(validCourses.map(c => c.id)),
+          offerId: validatedOffer ? String(validatedOffer.id) : null,
+          couponCode: validatedOffer ? validatedOffer.code : null
         },
       });
     } catch (stripeErr) {
@@ -143,7 +201,8 @@ const createPaymentOrder = async (req, res) => {
         userId,
         courseIds: validCourses.map(c => c.id),
         plan: targetPlan,
-        paymentRef: 'DIRECT_ACTIVATION'
+        paymentRef: 'DIRECT_ACTIVATION',
+        offerId: validatedOffer ? validatedOffer.id : null
       });
 
       return res.status(200).json({
@@ -171,7 +230,7 @@ const createPaymentOrder = async (req, res) => {
 /**
  * Helper function to activate user course plan enrollments
  */
-const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, paymentRef = null }) => {
+const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, paymentRef = null, offerId = null }) => {
   const targetPlan = String(plan).toLowerCase();
 
   await Promise.all(
@@ -183,7 +242,42 @@ const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, 
       if (!course) return;
 
       const pricing = calculateCoursePrice(course);
-      const purchasePrice = calculatePlanPrice(course, targetPlan);
+      let purchasePrice = calculatePlanPrice(course, targetPlan);
+      let discountAmountRecorded = 0;
+
+      // Handle Coupon Redemption if offerId present
+      const { Offer, OfferRedemption, sequelize } = require('../models');
+      if (offerId) {
+        const offer = await Offer.findByPk(offerId);
+        if (offer) {
+          if (offer.discountType === 'PERCENTAGE') {
+            discountAmountRecorded = Math.round((purchasePrice * offer.discountValue) / 100);
+            purchasePrice = Math.max(0, purchasePrice - discountAmountRecorded);
+          } else {
+            discountAmountRecorded = Math.round(offer.discountValue);
+            purchasePrice = Math.max(0, purchasePrice - discountAmountRecorded);
+          }
+
+          // Record Redemption & Increment totalUses atomically / safely
+          try {
+            await OfferRedemption.findOrCreate({
+              where: { offerId: offer.id, userId, courseId: parsedCourseId },
+              defaults: {
+                offerId: offer.id,
+                userId,
+                courseId: parsedCourseId,
+                plan: targetPlan,
+                orderId: paymentRef || 'DIRECT',
+                discountAmount: discountAmountRecorded
+              }
+            });
+            await offer.increment('totalUses', { by: 1 });
+          } catch (redemptionErr) {
+            logger.warn(`Offer redemption already recorded or concurrent duplicate prevented: ${redemptionErr.message}`);
+          }
+        }
+      }
+
       const discountPercentage = targetPlan === PLAN_TYPES.SILVER ? 30 : pricing.discountPercentage;
       const activatedAt = new Date();
 
@@ -272,15 +366,17 @@ const verifyPayment = async (req, res) => {
         }
         const targetUserId = req.user?.id || session.metadata?.userId;
         const sessionPlan = session.metadata?.plan || plan || PLAN_TYPES.GOLD;
+        const sessionOfferId = session.metadata?.offerId || null;
 
-        logger.info(`Verifying payment session ${sessionId} for user ${targetUserId}, plan: ${sessionPlan}, courseIds: ${JSON.stringify(courseIds)}`);
+        logger.info(`Verifying payment session ${sessionId} for user ${targetUserId}, plan: ${sessionPlan}, courseIds: ${JSON.stringify(courseIds)}, offerId: ${sessionOfferId}`);
 
         if (targetUserId && Array.isArray(courseIds) && courseIds.length > 0) {
           await activateEnrollments({
             userId: targetUserId,
             courseIds,
             plan: sessionPlan,
-            paymentRef: session.id
+            paymentRef: session.id,
+            offerId: sessionOfferId
           });
         }
 
@@ -330,13 +426,15 @@ const handleWebhook = async (req, res) => {
       const courseIds = JSON.parse(session.metadata?.courseIds || '[]');
       const userId = session.metadata?.userId;
       const plan = session.metadata?.plan || PLAN_TYPES.GOLD;
+      const offerId = session.metadata?.offerId || null;
 
       if (userId && courseIds.length > 0) {
         await activateEnrollments({
           userId,
           courseIds,
           plan,
-          paymentRef: session.id
+          paymentRef: session.id,
+          offerId
         });
         logger.info(`Stripe webhook: Enrolled user ${userId} with plan ${plan} in courses: ${courseIds.join(', ')}`);
       }

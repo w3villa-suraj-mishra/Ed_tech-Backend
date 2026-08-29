@@ -478,3 +478,125 @@ exports.deleteOffer = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error deleting offer.', error: error.message });
   }
 };
+
+/**
+ * Validate Coupon & Calculate Backend Discount
+ * POST /api/v1/offers/validate
+ */
+exports.validateAndCalculateCoupon = async (req, res) => {
+  try {
+    const { code, courseId, plan = 'gold' } = req.body;
+    const userId = req.user?.id;
+    const targetPlan = String(plan).toLowerCase();
+
+    if (!code || !code.trim()) {
+      return res.status(400).json({ success: false, message: 'Coupon code is required.' });
+    }
+
+    if (!courseId) {
+      return res.status(400).json({ success: false, message: 'Course ID is required.' });
+    }
+
+    // 1. Check Course Exists
+    const course = await Course.findByPk(courseId);
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found.' });
+    }
+
+    // Free plan check
+    if (targetPlan === 'free') {
+      return res.status(400).json({ success: false, message: 'Coupon is not applicable to free plans.' });
+    }
+
+    // 2. Find Offer
+    const normalizedCode = code.trim().toUpperCase();
+    const offer = await Offer.findOne({
+      where: { code: normalizedCode },
+      include: [
+        { model: Course, as: 'courses', attributes: ['id'] }
+      ]
+    });
+
+    if (!offer) {
+      return res.status(404).json({ success: false, message: 'Coupon not found.' });
+    }
+
+    // 3. Status and Date Checks
+    if (offer.status === 'DISABLED' || offer.status === 'DRAFT') {
+      return res.status(400).json({ success: false, message: 'Coupon is not active.' });
+    }
+
+    const now = new Date();
+    const startAt = new Date(offer.startAt);
+    const endAt = new Date(offer.endAt);
+
+    if (now < startAt) {
+      return res.status(400).json({ success: false, message: 'Coupon is not active yet.' });
+    }
+
+    if (now > endAt) {
+      return res.status(400).json({ success: false, message: 'Coupon has expired.' });
+    }
+
+    // 4. Scope / Course Eligibility Check
+    if (offer.scope === 'SELECTED_COURSES') {
+      const eligibleCourseIds = offer.courses ? offer.courses.map(c => c.id) : [];
+      if (!eligibleCourseIds.includes(Number(courseId))) {
+        return res.status(400).json({ success: false, message: 'Coupon is not valid for this course.' });
+      }
+    }
+
+    // 5. Total Uses Check
+    if (offer.maxUses !== null && offer.totalUses >= offer.maxUses) {
+      return res.status(400).json({ success: false, message: 'This coupon has reached its maximum total usage limit.' });
+    }
+
+    // 6. User Specific Usage Check
+    const { OfferRedemption } = require('../models');
+    if (userId) {
+      const userRedemptionCount = await OfferRedemption.count({
+        where: { offerId: offer.id, userId }
+      });
+      const maxPerUser = offer.maxUsesPerUser !== null ? offer.maxUsesPerUser : 1; // Default to 1
+      if (userRedemptionCount >= maxPerUser) {
+        return res.status(400).json({ success: false, message: 'You have already used this coupon.' });
+      }
+    }
+
+    // 7. Calculate Pricing
+    const { calculatePlanPrice } = require('../config/plans');
+    const originalAmount = calculatePlanPrice(course, targetPlan);
+
+    let discountAmount = 0;
+    if (offer.discountType === 'PERCENTAGE') {
+      discountAmount = Math.round((originalAmount * offer.discountValue) / 100);
+    } else {
+      discountAmount = Math.round(offer.discountValue);
+    }
+
+    if (discountAmount > originalAmount) {
+      discountAmount = originalAmount;
+    }
+
+    const finalAmount = originalAmount - discountAmount;
+
+    return res.status(200).json({
+      success: true,
+      message: 'Coupon code applied successfully.',
+      data: {
+        offerId: offer.id,
+        code: offer.code,
+        name: offer.name,
+        discountType: offer.discountType,
+        discountValue: offer.discountValue,
+        originalAmount,
+        discountAmount,
+        finalAmount
+      }
+    });
+  } catch (error) {
+    console.error('Error validating coupon:', error);
+    return res.status(500).json({ success: false, message: 'Server error while validating coupon.', error: error.message });
+  }
+};
+

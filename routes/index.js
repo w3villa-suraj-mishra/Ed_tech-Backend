@@ -530,6 +530,12 @@ router.post(
 );
 
 // ==========================================
+// OFFER / COUPON PUBLIC & STUDENT ROUTES
+// ==========================================
+const offerController = require('../controllers/offerController');
+router.post('/offers/validate', setCurrentUserIfAuthenticated, offerController.validateAndCalculateCoupon);
+
+// ==========================================
 // PAYMENT ROUTES
 // ==========================================
 router.post('/payment/capturePayment', authenticateUser, paymentController.createPaymentOrder);

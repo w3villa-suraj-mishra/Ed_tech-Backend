@@ -167,6 +167,7 @@ AnnouncementDismissal.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 // Offer models
 const Offer = require('./Offer');
 const OfferCourse = require('./OfferCourse');
+const OfferRedemption = require('./OfferRedemption');
 
 // Offer associations
 Offer.belongsToMany(Course, { through: OfferCourse, foreignKey: 'offerId', otherKey: 'courseId', as: 'courses' });
@@ -178,6 +179,15 @@ Offer.hasMany(OfferCourse, { foreignKey: 'offerId', as: 'offerCourses', onDelete
 
 User.hasMany(Offer, { foreignKey: 'createdBy', as: 'createdOffers' });
 Offer.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
+Offer.hasMany(OfferRedemption, { foreignKey: 'offerId', as: 'redemptions', onDelete: 'CASCADE' });
+OfferRedemption.belongsTo(Offer, { foreignKey: 'offerId', as: 'offer' });
+
+User.hasMany(OfferRedemption, { foreignKey: 'userId', as: 'offerRedemptions', onDelete: 'CASCADE' });
+OfferRedemption.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+Course.hasMany(OfferRedemption, { foreignKey: 'courseId', as: 'offerRedemptions', onDelete: 'CASCADE' });
+OfferRedemption.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
 
 module.exports = {
   User,
@@ -211,5 +221,6 @@ module.exports = {
   Announcement,
   AnnouncementDismissal,
   Offer,
-  OfferCourse
+  OfferCourse,
+  OfferRedemption
 };
