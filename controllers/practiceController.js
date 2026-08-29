@@ -297,25 +297,21 @@ const practiceController = {
       const where = {};
       if (testType) where.testType = testType;
       if (status) where.status = status;
-      if (scope) {
-        where.scope = scope;
-      }
-      if (courseId) {
-        where.courseId = courseId;
-      }
+      if (scope) where.scope = scope;
+      if (courseId) where.courseId = Number(courseId);
 
       const include = [];
       if (PracticeCategory) {
-        try { include.push({ model: PracticeCategory, as: 'category' }); } catch (e) {}
+        include.push({ model: PracticeCategory, as: 'category', required: false });
       }
       if (PracticeTopic) {
-        try { include.push({ model: PracticeTopic, as: 'topic' }); } catch (e) {}
+        include.push({ model: PracticeTopic, as: 'topic', required: false });
       }
       if (PracticeQuestion) {
-        try { include.push({ model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] } }); } catch (e) {}
+        include.push({ model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] }, required: false });
       }
       if (Course) {
-        try { include.push({ model: Course, as: 'course', attributes: ['id', 'courseName'] }); } catch (e) {}
+        include.push({ model: Course, as: 'course', attributes: ['id', 'courseName'], required: false });
       }
 
       const tests = await PracticeTest.findAll({
