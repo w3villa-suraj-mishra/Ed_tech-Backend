@@ -17,20 +17,79 @@ const logger = require('../utils/logger');
 
 const codeExecutionService = require('../services/codeExecutionService');
 
+// In-memory Rate Limiting for Run Code (Max 10 requests per minute per user)
+const userRunCodeLimits = new Map();
+const checkRunCodeRateLimit = (userId) => {
+  const now = Date.now();
+  const limitWindow = 60 * 1000;
+  const maxRequests = 10;
+
+  let record = userRunCodeLimits.get(userId);
+  if (!record || now > record.resetTime) {
+    record = { count: 1, resetTime: now + limitWindow };
+    userRunCodeLimits.set(userId, record);
+    return true;
+  }
+
+  if (record.count >= maxRequests) {
+    return false;
+  }
+
+  record.count += 1;
+  return true;
+};
+
 const practiceController = {
   // ----------------------------------------------------
-  // RUN CODE API (STUBBED SECURELY)
+  // RUN CODE API (SECURE ISOLATED SANDBOX RUNNER)
   // ----------------------------------------------------
   runCode: async (req, res) => {
     try {
+      const userId = req.user.id;
+      if (!checkRunCodeRateLimit(userId)) {
+        return res.status(429).json({
+          success: false,
+          code: 'RATE_LIMIT_EXCEEDED',
+          message: 'Too many code executions. Please wait a moment and try again.'
+        });
+      }
+
       const { questionId, language, sourceCode, input } = req.body;
-      const result = await codeExecutionService.runCode({ language, sourceCode, input });
+      if (!questionId) {
+        return res.status(400).json({ success: false, message: 'Question ID is required.' });
+      }
+
+      const question = await PracticeQuestion.findByPk(questionId);
+      if (!question) {
+        return res.status(404).json({ success: false, message: 'Question not found.' });
+      }
+
+      if (question.type !== 'Coding') {
+        return res.status(400).json({ success: false, message: 'Target question is not a Coding question.' });
+      }
+
+      // Filter ONLY visible test cases for security (Never expose hidden test cases)
+      let visibleCases = (question.codingDetails?.testCases || []).filter(tc => !tc.isHidden);
+
+      if (visibleCases.length === 0 && input !== undefined) {
+        visibleCases = [{ input, expectedOutput: '', isHidden: false }];
+      } else if (visibleCases.length === 0) {
+        visibleCases = [{ input: '', expectedOutput: '', isHidden: false }];
+      }
+
+      const result = await codeExecutionService.runCode({
+        language: language || question.codingDetails?.language || 'python',
+        sourceCode: sourceCode || '',
+        testCases: visibleCases
+      });
+
       return res.status(200).json(result);
     } catch (error) {
+      logger.error('RUN CODE CONTROLLER ERROR:', error.message);
       return res.status(500).json({
         success: false,
         code: 'CODE_EXECUTOR_UNAVAILABLE',
-        message: 'Code execution is currently unavailable.'
+        message: 'Code execution failed: ' + error.message
       });
     }
   },
@@ -737,13 +796,31 @@ const practiceController = {
             }
           }
         } else if (question.type === 'Coding') {
-          // Coding question - store submitted userCode & language
+          // Coding question - evaluate userCode against all test cases (visible + hidden)
           const submittedCode = userAns ? (userAns.userCode || userAns.sourceCode || null) : null;
-          if (submittedCode) {
-            // Evaluation is pending secure sandbox runner
-            isCorrect = false;
-            awarded = 0;
-            skippedCount++;
+          if (submittedCode && submittedCode.trim()) {
+            const lang = userAns.language || question.codingDetails?.language || 'python';
+            const testCases = question.codingDetails?.testCases || [];
+
+            const evalResult = await codeExecutionService.evaluateCode({
+              language: lang,
+              sourceCode: submittedCode,
+              testCases
+            });
+
+            if (evalResult.allPassed) {
+              isCorrect = true;
+              correctCount++;
+              awarded = marks;
+              score += marks;
+              topicStats[topicName].correct += 1;
+            } else {
+              isCorrect = false;
+              wrongCount++;
+              // Award partial marks proportional to passed test cases
+              awarded = Math.round((evalResult.scorePercentage * marks) * 100) / 100;
+              score += awarded;
+            }
           } else {
             skippedCount++;
           }
