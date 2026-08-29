@@ -206,8 +206,8 @@ const codeExecutionService = {
         questionId,
         language,
         sourceCode,
-        input: tc.input || '',
-        expectedOutput: tc.output || tc.expectedOutput || ''
+        input: tc.input !== undefined && tc.input !== null ? String(tc.input) : '',
+        expectedOutput: tc.expectedOutput !== undefined && tc.expectedOutput !== null ? String(tc.expectedOutput) : (tc.output ? String(tc.output) : '')
       });
 
       if (!result.success && result.status === 'CODE_EXECUTOR_UNAVAILABLE') {
