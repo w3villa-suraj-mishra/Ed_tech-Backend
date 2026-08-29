@@ -78,6 +78,7 @@ const practiceController = {
       }
 
       const result = await codeExecutionService.runCode({
+        questionId,
         language: language || question.codingDetails?.language || 'python',
         sourceCode: sourceCode || '',
         testCases: visibleCases
