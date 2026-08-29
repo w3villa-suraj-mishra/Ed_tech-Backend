@@ -13,6 +13,20 @@ const LANGUAGE_MAPPINGS = {
 };
 
 /**
+ * Normalizes stdin input for safe execution across arbitrary programming languages.
+ * Preserves all internal line breaks (\n), converts CRLF to LF, and ensures trailing LF.
+ */
+function normalizeTestCaseInput(input) {
+  if (input === undefined || input === null) return '\n';
+  let str = String(input);
+  str = str.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!str.endsWith('\n')) {
+    str += '\n';
+  }
+  return str;
+}
+
+/**
  * Normalizes output strings by trimming whitespace and normalizing line breaks
  */
 function normalizeOutput(str) {
@@ -48,7 +62,6 @@ function normalizeExecutionResult(data, expectedOutput = '') {
     status = 'COMPILATION_ERROR';
     passed = false;
   } else if (statusId >= 7 && statusId <= 12) {
-    // If stderr or compileOutput contains SyntaxError, mark as COMPILATION_ERROR
     if (stderr.includes('SyntaxError') || compileOutput.includes('SyntaxError')) {
       status = 'COMPILATION_ERROR';
     } else {
@@ -67,7 +80,11 @@ function normalizeExecutionResult(data, expectedOutput = '') {
     if (status === 'ACCEPTED') {
       passed = normActual === normExpected;
       if (!passed) {
-        status = 'WRONG_ANSWER';
+        if (normActual === '' && !stderr) {
+          status = 'NO_OUTPUT';
+        } else {
+          status = 'WRONG_ANSWER';
+        }
       }
     }
   } else if (status === 'ACCEPTED') {
@@ -112,8 +129,8 @@ const codeExecutionService = {
         headers['X-RapidAPI-Host'] = apiHost;
       }
 
-      // Ensure stdin is passed as exact string format
-      const stdinInput = typeof input === 'string' ? input : String(input || '');
+      // Ensure stdin is passed as exact normalized multiline string format
+      const stdinInput = normalizeTestCaseInput(input);
 
       const res = await axios.post(
         `${executorUrl.replace(/\/$/, '')}/submissions?wait=true`,
@@ -127,20 +144,18 @@ const codeExecutionService = {
 
       const normalized = normalizeExecutionResult(res.data || {}, expectedOutput);
 
-      // Log execution trace for debugging
+      // Log execution trace for debugging (without logging hidden test cases)
       console.log(`\n=================== [CODE EXECUTION TRACE] ===================`);
       console.log(`questionId: ${questionId || 'N/A'}`);
-      console.log(`language: ${language} (Key: ${langKey})`);
-      console.log(`executorLanguageId: ${config.judge0Id}`);
-      console.log(`sourceCodeLength: ${sourceCode?.length || 0}`);
-      console.log(`input (stdin): ${JSON.stringify(stdinInput)}`);
+      console.log(`rawStoredInput: ${JSON.stringify(input)}`);
+      console.log(`normalizedInput: ${JSON.stringify(stdinInput)}`);
+      console.log(`stdinSentToExecutor: ${JSON.stringify(stdinInput)}`);
       console.log(`executorStatus: ${res.data?.status?.id} (${res.data?.status?.description})`);
-      console.log(`normalizedStatus: ${normalized.status}`);
+      console.log(`status: ${normalized.status}`);
       console.log(`stdout: ${JSON.stringify(normalized.stdout)}`);
       console.log(`stderr: ${JSON.stringify(normalized.stderr)}`);
       console.log(`compileOutput: ${JSON.stringify(normalized.compileOutput)}`);
       console.log(`executionTime: ${normalized.executionTime}s`);
-      console.log(`memory: ${normalized.memory} KB`);
       console.log(`============================================================\n`);
 
       return normalized;
