@@ -19,6 +19,8 @@ const CourseCertificate = require('./CourseCertificate');
 const Notification = require('./Notification');
 const NotificationPreference = require('./NotificationPreference');
 const Article = require('./Article');
+const Announcement = require('./Announcement');
+const AnnouncementDismissal = require('./AnnouncementDismissal');
 
 // Define associations
 
@@ -155,6 +157,13 @@ PracticeAttemptAnswer.belongsTo(PracticeAttempt, { foreignKey: 'attemptId', as: 
 PracticeAttemptAnswer.belongsTo(PracticeQuestion, { foreignKey: 'questionId', as: 'question' });
 PracticeAttemptAnswer.belongsTo(PracticeOption, { foreignKey: 'selectedOptionId', as: 'selectedOption' });
 
+// Announcement associations
+Announcement.hasMany(AnnouncementDismissal, { foreignKey: 'announcementId', as: 'dismissals', onDelete: 'CASCADE' });
+AnnouncementDismissal.belongsTo(Announcement, { foreignKey: 'announcementId', as: 'announcement' });
+
+User.hasMany(AnnouncementDismissal, { foreignKey: 'userId', as: 'announcementDismissals', onDelete: 'CASCADE' });
+AnnouncementDismissal.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 module.exports = {
   User,
   Profile,
@@ -183,5 +192,7 @@ module.exports = {
   PracticeTest,
   PracticeTestQuestion,
   PracticeAttempt,
-  PracticeAttemptAnswer
+  PracticeAttemptAnswer,
+  Announcement,
+  AnnouncementDismissal
 };

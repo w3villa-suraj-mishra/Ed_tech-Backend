@@ -19,6 +19,13 @@ const {
 } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
+const announcementRoutes = require('./announcementRoutes');
+
+// ==========================================
+// ANNOUNCEMENT ROUTES (PUBLIC / LEARNER)
+// ==========================================
+router.use('/announcements', announcementRoutes);
+
 // ==========================================
 // NOTIFICATION ROUTES
 // ==========================================

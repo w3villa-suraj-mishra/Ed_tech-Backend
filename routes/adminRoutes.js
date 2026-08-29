@@ -73,4 +73,13 @@ router.delete('/contacts/:id', admin.deleteContact);
 // Notifications
 router.get('/notifications', admin.getNotifications);
 
+// Announcements
+const announcementController = require('../controllers/announcementController');
+router.post('/announcements', announcementController.createAnnouncement);
+router.get('/announcements', announcementController.getAllAnnouncements);
+router.get('/announcements/:id', announcementController.getAnnouncementById);
+router.put('/announcements/:id', announcementController.updateAnnouncement);
+router.patch('/announcements/:id/status', announcementController.updateAnnouncementStatus);
+router.delete('/announcements/:id', announcementController.deleteAnnouncement);
+
 module.exports = router;
