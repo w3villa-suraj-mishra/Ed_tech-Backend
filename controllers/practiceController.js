@@ -758,11 +758,11 @@ const practiceController = {
       });
 
       if (!attempt) {
-        return res.status(404).json({ success: false, message: 'Unable to load test review.' });
+        return res.status(404).json({ success: false, message: `Attempt ${id} not found for this user.` });
       }
 
       if (testId && String(attempt.testId) !== String(testId)) {
-        return res.status(403).json({ success: false, message: 'Access Denied: Attempt does not belong to this test.' });
+        return res.status(403).json({ success: false, message: `Access Denied: Attempt ${id} belongs to test ${attempt.testId}, not test ${testId}.` });
       }
 
       // Check course enrollment if courseId provided
