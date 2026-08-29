@@ -490,7 +490,12 @@ const courseController = {
       const instructorId = req.user.id;
 
       const courses = await Course.findAll({
-        where: { instructorId },
+        where: {
+          [Op.or]: [
+            { instructorId },
+            { instructor_id: instructorId }
+          ]
+        },
         include: [
           {
             association: 'sections',

@@ -740,7 +740,6 @@ const practiceController = {
       }
 
       const where = {
-        createdBy: instructorId,
         scope: 'COURSE'
       };
 
