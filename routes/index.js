@@ -563,6 +563,7 @@ if (practiceController) {
   // Test Builder (Admin)
   router.get('/admin/practice/tests', authenticateUser, isAdmin, practiceController.getTests);
   router.post('/admin/practice/tests', authenticateUser, isAdmin, practiceController.createTest);
+  router.post('/admin/practice/tests/bulk-delete', authenticateUser, practiceController.bulkDeleteTests);
   router.delete('/admin/practice/tests/:id', authenticateUser, isAdmin, practiceController.deleteTest);
 
   // Student Practice Center (Requires Authentication, FREE for all logged-in users)

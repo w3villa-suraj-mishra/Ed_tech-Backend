@@ -416,6 +416,27 @@ const practiceController = {
     }
   },
 
+  bulkDeleteTests: async (req, res) => {
+    try {
+      const { testIds } = req.body;
+      if (!Array.isArray(testIds) || testIds.length === 0) {
+        return res.status(400).json({ success: false, message: 'No test IDs provided for deletion.' });
+      }
+      const numericIds = testIds.map(id => Number(id));
+      const deletedCount = await PracticeTest.destroy({
+        where: { id: { [Op.in]: numericIds } }
+      });
+      return res.status(200).json({
+        success: true,
+        message: `${deletedCount} test(s) deleted successfully.`,
+        deletedCount
+      });
+    } catch (error) {
+      logger.error('BULK DELETE TESTS ERROR:', error.message);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
   // ================= STUDENT PRACTICE CENTER =================
 
   // Overview stats & cards data
