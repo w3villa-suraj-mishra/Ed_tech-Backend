@@ -105,12 +105,19 @@ const practiceController = {
       } else if (visibleCases.length === 0) {
         visibleCases = [{ input: '', expectedOutput: '', isHidden: false }];
       } else {
-        visibleCases = visibleCases.map(tc => ({
-          input: tc.input !== undefined && tc.input !== null ? String(tc.input) : (tc.inputData ? String(tc.inputData) : ''),
-          expectedOutput: tc.expectedOutput !== undefined && tc.expectedOutput !== null ? String(tc.expectedOutput) : (tc.output ? String(tc.output) : (tc.expected_output ? String(tc.expected_output) : '')),
-          output: tc.output !== undefined && tc.output !== null ? String(tc.output) : (tc.expectedOutput ? String(tc.expectedOutput) : ''),
-          isHidden: Boolean(tc.isHidden)
-        }));
+        visibleCases = visibleCases.map((tc, idx) => {
+          const rawInput = tc.input !== undefined && tc.input !== null ? tc.input : (tc.inputData !== undefined && tc.inputData !== null ? tc.inputData : '');
+          console.log(`\n--- [PRACTICE CONTROLLER TESTCASE DEBUG #${idx + 1}] ---`);
+          console.log(`questionId: ${questionId}`);
+          console.log(`rawTestCaseInput: ${rawInput}`);
+          console.log(`JSON.stringify(rawTestCaseInput): ${JSON.stringify(rawInput)}`);
+          return {
+            input: String(rawInput),
+            expectedOutput: tc.expectedOutput !== undefined && tc.expectedOutput !== null ? String(tc.expectedOutput) : (tc.output ? String(tc.output) : (tc.expected_output ? String(tc.expected_output) : '')),
+            output: tc.output !== undefined && tc.output !== null ? String(tc.output) : (tc.expectedOutput ? String(tc.expectedOutput) : ''),
+            isHidden: Boolean(tc.isHidden)
+          };
+        });
       }
 
       const result = await codeExecutionService.runCode({

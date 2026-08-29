@@ -184,6 +184,12 @@ if (!process.env.VERCEL) {
     try {
       await sequelize.sync({ alter: true });
       logger.info('Database synchronized successfully');
+      try {
+        const fixTestCaseInputs = require('./scripts/fixTestCaseInputs');
+        await fixTestCaseInputs();
+      } catch (fixErr) {
+        logger.error('Fix test case inputs script error:', fixErr.message);
+      }
     } catch (error) {
       logger.error('Database connection warning (server started without DB):', error.message);
     }
