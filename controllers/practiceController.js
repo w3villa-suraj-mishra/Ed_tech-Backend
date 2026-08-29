@@ -873,13 +873,50 @@ const practiceController = {
   getCoursePractice: async (req, res) => {
     try {
       const { courseId } = req.params;
+      const { testId } = req.query;
+      const userId = req.user.id;
+      const userRole = req.user.accountType;
+
       if (!courseId) {
         return res.status(400).json({ success: false, message: 'Course ID is required' });
       }
 
-      // Fetch all published tests for this course
+      const numericCourseId = Number(courseId);
+
+      // Verify course existence
+      const course = await Course.findByPk(numericCourseId);
+      if (!course) {
+        return res.status(404).json({ success: false, message: 'Course not found' });
+      }
+
+      // Enrollment Security Guard (Skip enrollment check for Admin/Instructor)
+      if (userRole !== 'Admin' && userRole !== 'SuperAdmin' && userRole !== 'Instructor') {
+        const enrollment = await Enrollment.findOne({
+          where: { userId, courseId: numericCourseId }
+        });
+
+        if (!enrollment) {
+          return res.status(403).json({
+            success: false,
+            message: 'Practice & Tests are available only to students enrolled in this course.',
+            notEnrolled: true
+          });
+        }
+      }
+
+      const whereClause = {
+        courseId: numericCourseId,
+        scope: 'COURSE',
+        status: 'published'
+      };
+
+      if (testId) {
+        whereClause.id = Number(testId);
+      }
+
+      // Fetch published tests for this course
       const tests = await PracticeTest.findAll({
-        where: { courseId: Number(courseId), scope: 'COURSE', status: 'published' },
+        where: whereClause,
         include: [
           {
             model: PracticeQuestion,
@@ -891,7 +928,37 @@ const practiceController = {
         order: [['createdAt', 'DESC']]
       });
 
-      return res.status(200).json({ success: true, data: tests });
+      // Enhance tests with student attempt stats (attemptsCount, bestScorePercentage, lastAttemptAt)
+      const enhancedTests = await Promise.all(
+        tests.map(async (testItem) => {
+          const testData = testItem.toJSON();
+          const userAttempts = await PracticeAttempt.findAll({
+            where: { userId, testId: testItem.id },
+            order: [['createdAt', 'DESC']]
+          });
+
+          const attemptsCount = userAttempts.length;
+          let bestScorePercentage = null;
+          let lastAttemptAt = null;
+
+          if (attemptsCount > 0) {
+            lastAttemptAt = userAttempts[0].createdAt;
+            const maxScore = Math.max(...userAttempts.map(a => Number(a.score || 0)));
+            const total = Number(testItem.totalMarks || 10);
+            bestScorePercentage = total > 0 ? Math.round((maxScore / total) * 100) : 0;
+          }
+
+          return {
+            ...testData,
+            questionCount: testData.questions ? testData.questions.length : testData.numberOfQuestions || 0,
+            attemptsCount,
+            bestScorePercentage,
+            lastAttemptAt
+          };
+        })
+      );
+
+      return res.status(200).json({ success: true, data: enhancedTests });
     } catch (error) {
       logger.error('GET COURSE PRACTICE FAILED:', error.message);
       return res.status(500).json({ success: false, message: error.message });
