@@ -739,8 +739,11 @@ const practiceController = {
   getAttemptDetails: async (req, res) => {
     try {
       const { id } = req.params;
+      const { courseId, testId } = req.query;
+      const userId = req.user.id;
+
       const attempt = await PracticeAttempt.findOne({
-        where: { id, userId: req.user.id },
+        where: { id, userId },
         include: [
           { model: PracticeTest, as: 'test' },
           {
@@ -754,7 +757,24 @@ const practiceController = {
         ]
       });
 
-      if (!attempt) return res.status(404).json({ success: false, message: 'Attempt not found' });
+      if (!attempt) {
+        return res.status(404).json({ success: false, message: 'Unable to load test review.' });
+      }
+
+      if (testId && String(attempt.testId) !== String(testId)) {
+        return res.status(403).json({ success: false, message: 'Access Denied: Attempt does not belong to this test.' });
+      }
+
+      // Check course enrollment if courseId provided
+      if (courseId) {
+        const enrollment = await Enrollment.findOne({
+          where: { userId, courseId }
+        });
+        if (!enrollment && req.user.role !== 'Admin' && req.user.role !== 'Instructor') {
+          return res.status(403).json({ success: false, message: 'Access Denied: You are not enrolled in this course.' });
+        }
+      }
+
       return res.status(200).json({ success: true, data: attempt });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });
