@@ -32,15 +32,15 @@ async function fixTestCaseInputs() {
 
         let inputStr = String(rawInput).trim();
 
-        // Check for single-line input "8 10 5 2 7 1 9 -2 3 15"
-        if (inputStr === '8 10 5 2 7 1 9 -2 3 15') {
-          console.log(`  -> Repairing single-line Test Case #2 input to multiline format.`);
+        // Check for single-line or 2-line input variants of Test Case #2 ("8 10 5 2 7 1 9 -2 3 15" or "8\n10 5 2 7 1 9 -2 3")
+        if (inputStr === '8 10 5 2 7 1 9 -2 3 15' || inputStr === '8\n10 5 2 7 1 9 -2 3' || inputStr === '8\n10 5 2 7 1 9 -2 3\n') {
+          console.log(`  -> Repairing Test Case #2 input to exact multiline format: "8\\n10 5 2 7 1 9 -2 3\\n15"`);
           inputStr = '8\n10 5 2 7 1 9 -2 3\n15';
           changed = true;
         }
         // Check for single-line input "10 -2 5 3 -1 2 4 -3 6 -4 1 7"
-        else if (inputStr === '10 -2 5 3 -1 2 4 -3 6 -4 1 7') {
-          console.log(`  -> Repairing single-line Test Case #1 input to multiline format.`);
+        else if (inputStr === '10 -2 5 3 -1 2 4 -3 6 -4 1 7' || inputStr === '10\n-2 5 3 -1 2 4 -3 6 -4 1') {
+          console.log(`  -> Repairing Test Case #1 input to exact multiline format: "10\\n-2 5 3 -1 2 4 -3 6 -4 1\\n7"`);
           inputStr = '10\n-2 5 3 -1 2 4 -3 6 -4 1\n7';
           changed = true;
         }
