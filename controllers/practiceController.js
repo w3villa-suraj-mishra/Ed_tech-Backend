@@ -375,12 +375,24 @@ const practiceController = {
       });
 
       if (Array.isArray(questionIds) && questionIds.length > 0) {
-        const testQuestions = questionIds.map((qId, idx) => ({
-          testId: test.id,
-          questionId: qId,
-          order: idx + 1,
-        }));
-        await PracticeTestQuestion.bulkCreate(testQuestions);
+        const numericQIds = questionIds.map(id => Number(id));
+        const validQuestions = await PracticeQuestion.findAll({
+          where: { id: { [Op.in]: numericQIds } },
+          attributes: ['id']
+        });
+        const validQIdSet = new Set(validQuestions.map(q => q.id));
+
+        const testQuestions = numericQIds
+          .filter(qId => validQIdSet.has(qId))
+          .map((qId, idx) => ({
+            testId: test.id,
+            questionId: qId,
+            order: idx + 1,
+          }));
+
+        if (testQuestions.length > 0) {
+          await PracticeTestQuestion.bulkCreate(testQuestions);
+        }
       }
 
       const fullTest = await PracticeTest.findByPk(test.id, {
@@ -389,6 +401,7 @@ const practiceController = {
 
       return res.status(201).json({ success: true, data: fullTest });
     } catch (error) {
+      logger.error('CREATE TEST ERROR:', error.message);
       return res.status(500).json({ success: false, message: error.message });
     }
   },
@@ -914,12 +927,24 @@ const practiceController = {
       });
 
       if (Array.isArray(questionIds) && questionIds.length > 0) {
-        const testQuestions = questionIds.map((qId, idx) => ({
-          testId: test.id,
-          questionId: qId,
-          order: idx + 1
-        }));
-        await PracticeTestQuestion.bulkCreate(testQuestions);
+        const numericQIds = questionIds.map(id => Number(id));
+        const validQuestions = await PracticeQuestion.findAll({
+          where: { id: { [Op.in]: numericQIds } },
+          attributes: ['id']
+        });
+        const validQIdSet = new Set(validQuestions.map(q => q.id));
+
+        const testQuestions = numericQIds
+          .filter(qId => validQIdSet.has(qId))
+          .map((qId, idx) => ({
+            testId: test.id,
+            questionId: qId,
+            order: idx + 1
+          }));
+
+        if (testQuestions.length > 0) {
+          await PracticeTestQuestion.bulkCreate(testQuestions);
+        }
       }
 
       // Query database using the returned test ID and verify record actually exists
