@@ -125,6 +125,12 @@ PracticeTest.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
 PracticeCategory.hasMany(PracticeQuestion, { foreignKey: 'categoryId', as: 'questions' });
 PracticeQuestion.belongsTo(PracticeCategory, { foreignKey: 'categoryId', as: 'category' });
 
+PracticeCategory.hasMany(PracticeTest, { foreignKey: 'categoryId', as: 'tests' });
+PracticeTest.belongsTo(PracticeCategory, { foreignKey: 'categoryId', as: 'category' });
+
+PracticeTopic.hasMany(PracticeTest, { foreignKey: 'topicId', as: 'tests' });
+PracticeTest.belongsTo(PracticeTopic, { foreignKey: 'topicId', as: 'topic' });
+
 PracticeTopic.hasMany(PracticeQuestion, { foreignKey: 'topicId', as: 'questions' });
 PracticeQuestion.belongsTo(PracticeTopic, { foreignKey: 'topicId', as: 'topic' });
 
