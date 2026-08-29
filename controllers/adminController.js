@@ -186,7 +186,8 @@ const dashboardStats = async (req, res) => {
     const [
       totalUsers, totalStudents, totalInstructors, totalAdmins,
       totalCourses, publishedCourses, draftCourses,
-      totalCategories, totalEnrollments, totalReviews, totalSections, totalLiveSessions
+      totalCategories, totalEnrollments, totalReviews, totalSections, totalLiveSessions,
+      recentCourses, recentUsers
     ] = await Promise.all([
       User.count(),
       User.count({ where: { accountType: 'Student' } }),
@@ -199,12 +200,37 @@ const dashboardStats = async (req, res) => {
       Enrollment.count(),
       RatingAndReview.count(),
       Section.count(),
-      LiveSession.count()
+      LiveSession.count(),
+      Course.findAll({
+        limit: 5,
+        order: [['createdAt', 'DESC']],
+        include: [{ association: 'instructor', attributes: ['id', 'firstName', 'lastName'] }]
+      }),
+      User.findAll({
+        limit: 5,
+        order: [['createdAt', 'DESC']],
+        attributes: ['id', 'firstName', 'lastName', 'email', 'accountType']
+      })
     ]);
 
     return res.json({
       success: true,
       data: {
+        totalUsers,
+        totalStudents,
+        totalInstructors,
+        totalAdmins,
+        totalCourses,
+        publishedCourses,
+        draftCourses,
+        totalCategories,
+        totalEnrollments,
+        totalReviews,
+        totalSections,
+        totalLiveSessions,
+        recentCourses,
+        recentUsers,
+        // Nested object for backward compatibility
         users: { total: totalUsers, students: totalStudents, instructors: totalInstructors, admins: totalAdmins },
         courses: { total: totalCourses, published: publishedCourses, draft: draftCourses },
         categories: totalCategories,
