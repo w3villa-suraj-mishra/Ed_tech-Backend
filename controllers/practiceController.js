@@ -544,32 +544,57 @@ const practiceController = {
   // Submit Practice Attempt
   submitAttempt: async (req, res) => {
     try {
-      const { testId, testType, answers, timeTaken } = req.body; // answers = [{ questionId, selectedOptionId, userCode, userInterviewAnswer }]
+      const { testId, courseId, testType, answers, timeTaken } = req.body; // answers = [{ questionId, selectedOptionId, userCode, userInterviewAnswer }]
       const userId = req.user.id;
 
-      if (!Array.isArray(answers)) {
-        return res.status(400).json({ success: false, message: 'Invalid answers format' });
+      let targetTest = null;
+      let allQuestions = [];
+
+      if (testId) {
+        targetTest = await PracticeTest.findByPk(testId, {
+          include: [
+            {
+              model: PracticeQuestion,
+              as: 'questions',
+              include: [{ model: PracticeOption, as: 'options' }]
+            }
+          ]
+        });
+        if (targetTest && targetTest.questions) {
+          allQuestions = targetTest.questions;
+        }
       }
 
-      let totalQuestions = answers.length;
+      // Map submitted answers by questionId for fast lookup
+      const submittedMap = {};
+      if (Array.isArray(answers)) {
+        answers.forEach((ans) => {
+          if (ans.questionId) {
+            submittedMap[ans.questionId] = ans;
+          }
+        });
+      }
+
+      // If no target test loaded, fallback to submitted answers list
+      if (allQuestions.length === 0 && Array.isArray(answers)) {
+        for (const ans of answers) {
+          const q = await PracticeQuestion.findByPk(ans.questionId, {
+            include: [{ model: PracticeOption, as: 'options' }]
+          });
+          if (q) allQuestions.push(q);
+        }
+      }
+
+      let totalQuestions = allQuestions.length;
       let correctCount = 0;
       let wrongCount = 0;
       let skippedCount = 0;
       let score = 0;
       let totalMarks = 0;
       const answerRecords = [];
-      const topicStats = {}; // { topicName: { correct: 0, total: 0 } }
+      const topicStats = {};
 
-      for (const ans of answers) {
-        const question = await PracticeQuestion.findByPk(ans.questionId, {
-          include: [
-            { model: PracticeOption, as: 'options' },
-            { model: PracticeTopic, as: 'topic' }
-          ]
-        });
-
-        if (!question) continue;
-
+      for (const question of allQuestions) {
         const marks = question.marks || 1;
         const neg = question.negativeMarks || 0;
         totalMarks += marks;
@@ -578,15 +603,16 @@ const practiceController = {
         if (!topicStats[topicName]) topicStats[topicName] = { correct: 0, total: 0 };
         topicStats[topicName].total += 1;
 
+        const userAns = submittedMap[question.id];
         let isCorrect = false;
         let awarded = 0;
 
         if (question.type === 'MCQ') {
-          if (!ans.selectedOptionId) {
+          if (!userAns || !userAns.selectedOptionId) {
             skippedCount++;
           } else {
-            const correctOpt = question.options.find(o => o.isCorrect);
-            if (correctOpt && String(correctOpt.id) === String(ans.selectedOptionId)) {
+            const correctOpt = question.options ? question.options.find(o => o.isCorrect || o.is_correct) : null;
+            if (correctOpt && String(correctOpt.id) === String(userAns.selectedOptionId)) {
               isCorrect = true;
               correctCount++;
               awarded = marks;
@@ -595,12 +621,12 @@ const practiceController = {
             } else {
               wrongCount++;
               awarded = -neg;
-              score -= neg;
+              score = Math.max(0, score - neg);
             }
           }
         } else {
           // Coding or Interview - self-validated / submitted
-          if (ans.userCode || ans.userInterviewAnswer) {
+          if (userAns && (userAns.userCode || userAns.userInterviewAnswer)) {
             isCorrect = true;
             correctCount++;
             awarded = marks;
@@ -613,17 +639,24 @@ const practiceController = {
 
         answerRecords.push({
           questionId: question.id,
-          selectedOptionId: ans.selectedOptionId || null,
-          userCode: ans.userCode || null,
-          userInterviewAnswer: ans.userInterviewAnswer || null,
+          selectedOptionId: userAns ? (userAns.selectedOptionId || null) : null,
+          userCode: userAns ? (userAns.userCode || null) : null,
+          userInterviewAnswer: userAns ? (userAns.userInterviewAnswer || null) : null,
           isCorrect,
           marksAwarded: awarded,
         });
       }
 
+      // Ensure totalMarks matches test.totalMarks if test specified it
+      if (targetTest && targetTest.totalMarks) {
+        totalMarks = targetTest.totalMarks;
+      }
+
       const percentage = totalMarks > 0 ? Math.max(0, Math.round((score / totalMarks) * 100)) : 0;
       const attemptedCount = correctCount + wrongCount;
       const accuracy = attemptedCount > 0 ? Math.round((correctCount / attemptedCount) * 100) : 0;
+      const passingPct = targetTest ? (targetTest.passingPercentage || 40) : 40;
+      const isPassed = percentage >= passingPct;
 
       // Calculate strong/weak topics
       const strongTopics = [];
@@ -637,7 +670,7 @@ const practiceController = {
       const attempt = await PracticeAttempt.create({
         userId,
         testId: testId || null,
-        testType: testType || 'Daily Quiz',
+        testType: testType || (targetTest ? targetTest.testType : 'MCQ'),
         totalQuestions,
         correctCount,
         wrongCount,
@@ -647,11 +680,11 @@ const practiceController = {
         percentage,
         accuracy,
         timeTaken: timeTaken || 0,
-        status: percentage >= 40 ? 'Passed' : 'Completed',
+        status: isPassed ? 'Passed' : 'Failed',
         analytics: {
           strongTopics,
           weakTopics,
-          recommendedPractice: weakTopics.length > 0 ? weakTopics : ['Advanced Algorithms']
+          recommendedPractice: weakTopics.length > 0 ? weakTopics : ['General']
         }
       });
 
@@ -670,7 +703,18 @@ const practiceController = {
         }]
       });
 
-      return res.status(201).json({ success: true, data: fullAttempt });
+      const resultData = {
+        ...fullAttempt.toJSON(),
+        score,
+        totalMarks,
+        percentage,
+        correctAnswers: correctCount,
+        incorrectAnswers: wrongCount,
+        unanswered: skippedCount,
+        isPassed
+      };
+
+      return res.status(201).json({ success: true, data: resultData });
     } catch (error) {
       logger.error('SUBMIT ATTEMPT FAILED:', error.message);
       return res.status(500).json({ success: false, message: error.message });
