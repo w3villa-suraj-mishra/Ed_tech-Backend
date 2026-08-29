@@ -11,6 +11,7 @@ const {
   CourseComment,
   CourseCertificate
 } = require('../models');
+const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const courseService = require('../services/courseService');
 const uploadService = require('../services/uploadService');
@@ -490,12 +491,7 @@ const courseController = {
       const instructorId = req.user.id;
 
       const courses = await Course.findAll({
-        where: {
-          [Op.or]: [
-            { instructorId },
-            { instructor_id: instructorId }
-          ]
-        },
+        where: { instructorId },
         include: [
           {
             association: 'sections',
