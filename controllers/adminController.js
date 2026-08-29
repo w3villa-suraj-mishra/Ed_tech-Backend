@@ -876,6 +876,19 @@ const deleteContact = async (req, res) => {
   }
 };
 
+const getNotifications = async (req, res) => {
+  try {
+    const notifications = await Notification.findAll({
+      order: [['createdAt', 'DESC']],
+      limit: 20
+    });
+    return res.json({ success: true, data: notifications });
+  } catch (e) {
+    logger.error('ADMIN GET NOTIFICATIONS:', e.message);
+    return res.status(500).json({ success: false, message: e.message });
+  }
+};
+
 module.exports = {
   checkInit, setup, login, getMe,
   dashboardStats,
