@@ -563,6 +563,7 @@ if (practiceController) {
   // Test Builder (Admin)
   router.get('/admin/practice/tests', authenticateUser, isAdmin, practiceController.getTests);
   router.post('/admin/practice/tests', authenticateUser, isAdmin, practiceController.createTest);
+  router.put('/admin/practice/tests/:id', authenticateUser, practiceController.updateTest);
   router.post('/admin/practice/tests/bulk-delete', authenticateUser, practiceController.bulkDeleteTests);
   router.delete('/admin/practice/tests/:id', authenticateUser, isAdmin, practiceController.deleteTest);
 
@@ -572,6 +573,7 @@ if (practiceController) {
   router.get('/practice/topic-questions', authenticateUser, practiceController.getTopicPracticeQuestions);
   router.get('/practice/tests', authenticateUser, practiceController.getTests); // Student view published tests
   router.post('/practice/submit', authenticateUser, practiceController.submitAttempt);
+  router.post('/practice/code/run', authenticateUser, practiceController.runCode);
   router.get('/practice/attempts', authenticateUser, practiceController.getUserAttempts);
   router.get('/practice/attempts/:id', authenticateUser, practiceController.getAttemptDetails);
 
@@ -580,6 +582,7 @@ if (practiceController) {
   router.get('/instructor/practice/tests', authenticateUser, isInstructor, practiceController.getInstructorTests);
   router.get('/instructor/practice/questions', authenticateUser, isInstructor, practiceController.getInstructorQuestions);
   router.post('/instructor/practice/course-test', authenticateUser, isInstructor, practiceController.createInstructorCourseTest);
+  router.put('/instructor/practice/tests/:id', authenticateUser, isInstructor, practiceController.updateTest);
   router.patch('/instructor/practice/tests/:id/status', authenticateUser, isInstructor, practiceController.updateTestStatus);
   router.get('/instructor/practice/tests/:testId/attempts', authenticateUser, isInstructor, practiceController.getTestAttempts);
 }

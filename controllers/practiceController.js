@@ -15,7 +15,25 @@ const {
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 
+const codeExecutionService = require('../services/codeExecutionService');
+
 const practiceController = {
+  // ----------------------------------------------------
+  // RUN CODE API (STUBBED SECURELY)
+  // ----------------------------------------------------
+  runCode: async (req, res) => {
+    try {
+      const { questionId, language, sourceCode, input } = req.body;
+      const result = await codeExecutionService.runCode({ language, sourceCode, input });
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        code: 'CODE_EXECUTOR_UNAVAILABLE',
+        message: 'Code execution is currently unavailable.'
+      });
+    }
+  },
   // ================= CATEGORIES & TOPICS =================
 
   getCategories: async (req, res) => {
@@ -407,6 +425,100 @@ const practiceController = {
     }
   },
 
+  updateTest: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const test = await PracticeTest.findByPk(id);
+      if (!test) {
+        return res.status(404).json({ success: false, message: 'Test not found' });
+      }
+
+      // Security check for instructors
+      if (req.user?.accountType === 'Instructor' && Number(test.createdBy) !== Number(req.user.id)) {
+        return res.status(403).json({ success: false, message: 'Forbidden: You do not own this test' });
+      }
+
+      const {
+        title,
+        description,
+        testType,
+        categoryId,
+        topicId,
+        courseId,
+        duration,
+        totalMarks,
+        passingPercentage,
+        numberOfQuestions,
+        randomizeQuestions,
+        randomizeOptions,
+        allowReattempt,
+        status,
+        scope,
+        questionIds
+      } = req.body;
+
+      const targetScope = scope || test.scope;
+      const targetCourseId = targetScope === 'COURSE' ? (courseId || test.courseId) : null;
+
+      await test.update({
+        title: title !== undefined ? title : test.title,
+        description: description !== undefined ? description : test.description,
+        testType: testType !== undefined ? testType : test.testType,
+        categoryId: categoryId !== undefined ? categoryId : test.categoryId,
+        topicId: topicId !== undefined ? topicId : test.topicId,
+        courseId: targetCourseId,
+        scope: targetScope,
+        duration: duration !== undefined ? duration : test.duration,
+        totalMarks: totalMarks !== undefined ? totalMarks : test.totalMarks,
+        passingPercentage: passingPercentage !== undefined ? passingPercentage : test.passingPercentage,
+        numberOfQuestions: numberOfQuestions !== undefined ? numberOfQuestions : (questionIds ? questionIds.length : test.numberOfQuestions),
+        randomizeQuestions: randomizeQuestions !== undefined ? randomizeQuestions : test.randomizeQuestions,
+        randomizeOptions: randomizeOptions !== undefined ? randomizeOptions : test.randomizeOptions,
+        allowReattempt: allowReattempt !== undefined ? allowReattempt : test.allowReattempt,
+        status: status !== undefined ? status : test.status,
+      });
+
+      if (Array.isArray(questionIds)) {
+        await PracticeTestQuestion.destroy({ where: { testId: id } });
+
+        const numericQIds = questionIds.map(qId => Number(qId));
+        const validQuestions = await PracticeQuestion.findAll({
+          where: { id: { [Op.in]: numericQIds } },
+          attributes: ['id']
+        });
+        const validQIdSet = new Set(validQuestions.map(q => q.id));
+
+        const testQuestions = numericQIds
+          .filter(qId => validQIdSet.has(qId))
+          .map((qId, idx) => ({
+            testId: test.id,
+            questionId: qId,
+            order: idx + 1,
+          }));
+
+        if (testQuestions.length > 0) {
+          await PracticeTestQuestion.bulkCreate(testQuestions);
+        }
+      }
+
+      const updatedFull = await PracticeTest.findByPk(id, {
+        include: [
+          { model: Course, as: 'course', attributes: ['id', 'courseName'] },
+          { model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] } }
+        ]
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: updatedFull,
+        message: 'Test updated successfully'
+      });
+    } catch (error) {
+      logger.error('UPDATE TEST ERROR:', error.message);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
   deleteTest: async (req, res) => {
     try {
       const { id } = req.params;
@@ -624,8 +736,19 @@ const practiceController = {
               score = Math.max(0, score - neg);
             }
           }
+        } else if (question.type === 'Coding') {
+          // Coding question - store submitted userCode & language
+          const submittedCode = userAns ? (userAns.userCode || userAns.sourceCode || null) : null;
+          if (submittedCode) {
+            // Evaluation is pending secure sandbox runner
+            isCorrect = false;
+            awarded = 0;
+            skippedCount++;
+          } else {
+            skippedCount++;
+          }
         } else {
-          // Coding or Interview - self-validated / submitted
+          // Interview / Short Answer - submitted answer
           if (userAns && (userAns.userCode || userAns.userInterviewAnswer)) {
             isCorrect = true;
             correctCount++;
@@ -1015,9 +1138,26 @@ const practiceController = {
             bestScorePercentage = total > 0 ? Math.round((maxScore / total) * 100) : 0;
           }
 
+          // Security: Filter hidden test cases from student response
+          const sanitizedQuestions = (testData.questions || []).map(q => {
+            if (q.type === 'Coding' && q.codingDetails && Array.isArray(q.codingDetails.testCases)) {
+              return {
+                ...q,
+                codingDetails: {
+                  ...q.codingDetails,
+                  testCases: q.codingDetails.testCases
+                    .filter(tc => !tc.isHidden)
+                    .map(tc => ({ input: tc.input, output: tc.output || tc.expectedOutput }))
+                }
+              };
+            }
+            return q;
+          });
+
           return {
             ...testData,
-            questionCount: testData.questions ? testData.questions.length : testData.numberOfQuestions || 0,
+            questions: sanitizedQuestions,
+            questionCount: sanitizedQuestions.length || testData.numberOfQuestions || 0,
             attemptsCount,
             latestAttemptId,
             bestScorePercentage,
