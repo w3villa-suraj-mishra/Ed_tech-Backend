@@ -164,6 +164,21 @@ AnnouncementDismissal.belongsTo(Announcement, { foreignKey: 'announcementId', as
 User.hasMany(AnnouncementDismissal, { foreignKey: 'userId', as: 'announcementDismissals', onDelete: 'CASCADE' });
 AnnouncementDismissal.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
+// Offer models
+const Offer = require('./Offer');
+const OfferCourse = require('./OfferCourse');
+
+// Offer associations
+Offer.belongsToMany(Course, { through: OfferCourse, foreignKey: 'offerId', otherKey: 'courseId', as: 'courses' });
+Course.belongsToMany(Offer, { through: OfferCourse, foreignKey: 'courseId', otherKey: 'offerId', as: 'offers' });
+
+OfferCourse.belongsTo(Offer, { foreignKey: 'offerId', as: 'offer' });
+OfferCourse.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+Offer.hasMany(OfferCourse, { foreignKey: 'offerId', as: 'offerCourses', onDelete: 'CASCADE' });
+
+User.hasMany(Offer, { foreignKey: 'createdBy', as: 'createdOffers' });
+Offer.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
 module.exports = {
   User,
   Profile,
@@ -194,5 +209,7 @@ module.exports = {
   PracticeAttempt,
   PracticeAttemptAnswer,
   Announcement,
-  AnnouncementDismissal
+  AnnouncementDismissal,
+  Offer,
+  OfferCourse
 };

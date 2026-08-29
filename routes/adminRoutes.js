@@ -82,4 +82,14 @@ router.put('/announcements/:id', announcementController.updateAnnouncement);
 router.patch('/announcements/:id/status', announcementController.updateAnnouncementStatus);
 router.delete('/announcements/:id', announcementController.deleteAnnouncement);
 
+// Offers & Coupons
+const offerController = require('../controllers/offerController');
+router.post('/offers', offerController.createOffer);
+router.get('/offers', offerController.getAllOffers);
+router.get('/offers/:id', offerController.getOfferById);
+router.put('/offers/:id', offerController.updateOffer);
+router.patch('/offers/:id/status', offerController.updateOfferStatus);
+router.post('/offers/:id/duplicate', offerController.duplicateOffer);
+router.delete('/offers/:id', offerController.deleteOffer);
+
 module.exports = router;

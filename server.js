@@ -124,9 +124,11 @@ app.get('/health', (req, res) => {
 app.get('/run-migrations', async (req, res) => {
   try {
     await sequelize.authenticate();
-    const { Announcement, AnnouncementDismissal } = require('./models');
+    const { Announcement, AnnouncementDismissal, Offer, OfferCourse } = require('./models');
     await Announcement.sync();
     await AnnouncementDismissal.sync();
+    await Offer.sync();
+    await OfferCourse.sync();
     await sequelize.query(`
       DO $$ 
       BEGIN 
