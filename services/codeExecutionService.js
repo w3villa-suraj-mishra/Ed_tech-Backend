@@ -218,14 +218,14 @@ const codeExecutionService = {
 
       testResults.push({
         testCaseIndex: i + 1,
-        input: tc.input || '',
-        expectedOutput: tc.output || tc.expectedOutput || '',
-        actualOutput: result.actualOutput || '',
+        input: tc.input !== undefined && tc.input !== null ? String(tc.input) : '',
+        expectedOutput: String(tc.expectedOutput || tc.output || tc.expected_output || ''),
+        actualOutput: result.actualOutput !== undefined && result.actualOutput !== null ? String(result.actualOutput) : String(result.stdout || ''),
         passed: result.passed,
         status: result.status,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        compileOutput: result.compileOutput,
+        stdout: result.stdout || '',
+        stderr: result.stderr || '',
+        compileOutput: result.compileOutput || '',
         executionTime: result.executionTime,
         memory: result.memory
       });

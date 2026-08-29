@@ -104,6 +104,13 @@ const practiceController = {
         visibleCases = [{ input, expectedOutput: '', isHidden: false }];
       } else if (visibleCases.length === 0) {
         visibleCases = [{ input: '', expectedOutput: '', isHidden: false }];
+      } else {
+        visibleCases = visibleCases.map(tc => ({
+          input: tc.input !== undefined && tc.input !== null ? String(tc.input) : (tc.inputData ? String(tc.inputData) : ''),
+          expectedOutput: tc.expectedOutput !== undefined && tc.expectedOutput !== null ? String(tc.expectedOutput) : (tc.output ? String(tc.output) : (tc.expected_output ? String(tc.expected_output) : '')),
+          output: tc.output !== undefined && tc.output !== null ? String(tc.output) : (tc.expectedOutput ? String(tc.expectedOutput) : ''),
+          isHidden: Boolean(tc.isHidden)
+        }));
       }
 
       const result = await codeExecutionService.runCode({
