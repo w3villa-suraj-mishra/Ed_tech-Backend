@@ -77,7 +77,7 @@ exports.createAnnouncement = async (req, res) => {
       return res.status(400).json({ success: false, message: 'End date must be later than start date' });
     }
 
-    const effectiveStatus = calculateEffectiveStatus(status, startAt, endAt);
+    const effectiveStatus = status === 'ACTIVE' ? 'ACTIVE' : calculateEffectiveStatus(status, startAt, endAt);
 
     const announcement = await Announcement.create({
       title: title.trim(),
@@ -224,7 +224,7 @@ exports.updateAnnouncement = async (req, res) => {
     }
 
     const requestedStatus = status || announcement.status;
-    const effectiveStatus = calculateEffectiveStatus(requestedStatus, newStartAt, newEndAt);
+    const effectiveStatus = requestedStatus === 'ACTIVE' ? 'ACTIVE' : calculateEffectiveStatus(requestedStatus, newStartAt, newEndAt);
 
     await announcement.update({
       title: title !== undefined ? title.trim() : announcement.title,
@@ -270,7 +270,8 @@ exports.updateAnnouncementStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Announcement not found' });
     }
 
-    const effectiveStatus = calculateEffectiveStatus(status, announcement.startAt, announcement.endAt);
+    // If Admin explicitly requests ACTIVE status, update status to ACTIVE without forced SCHEDULED status fallback
+    const effectiveStatus = status === 'ACTIVE' ? 'ACTIVE' : calculateEffectiveStatus(status, announcement.startAt, announcement.endAt);
     await announcement.update({ status: effectiveStatus });
 
     return res.status(200).json({
