@@ -119,6 +119,9 @@ PracticeTopic.belongsTo(PracticeCategory, { foreignKey: 'categoryId', as: 'categ
 Course.hasMany(PracticeQuestion, { foreignKey: 'courseId', as: 'practiceQuestions', onDelete: 'SET NULL' });
 PracticeQuestion.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
 
+Course.hasMany(PracticeTest, { foreignKey: 'courseId', as: 'practiceTests', onDelete: 'CASCADE' });
+PracticeTest.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+
 PracticeCategory.hasMany(PracticeQuestion, { foreignKey: 'categoryId', as: 'questions' });
 PracticeQuestion.belongsTo(PracticeCategory, { foreignKey: 'categoryId', as: 'category' });
 

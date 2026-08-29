@@ -314,6 +314,9 @@ const practiceController = {
       if (PracticeQuestion) {
         try { include.push({ model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] } }); } catch (e) {}
       }
+      if (Course) {
+        try { include.push({ model: Course, as: 'course', attributes: ['id', 'courseName'] }); } catch (e) {}
+      }
 
       const tests = await PracticeTest.findAll({
         where,
@@ -691,12 +694,16 @@ const practiceController = {
       const instructorId = req.user.id;
       const { courseId, testType, status } = req.query;
 
+      logger.info(`[COURSE TEST LIST] instructorId=${instructorId}, req.courseId=${courseId}, testType=${testType}`);
+
       // Find all courses owned by instructor
       const ownedCourses = await Course.findAll({
-        where: { instructorId },
+        where: { [Op.or]: [{ instructorId }, { instructor_id: instructorId }] },
         attributes: ['id']
       });
       const ownedCourseIds = ownedCourses.map(c => c.id);
+
+      logger.info(`[COURSE TEST LIST] ownedCourseIds=[${ownedCourseIds.join(', ')}]`);
 
       if (ownedCourseIds.length === 0) {
         return res.status(200).json({ success: true, data: [] });
@@ -708,10 +715,12 @@ const practiceController = {
       };
 
       if (courseId) {
-        if (!ownedCourseIds.includes(Number(courseId))) {
+        const numericCourseId = Number(courseId);
+        if (!ownedCourseIds.map(id => Number(id)).includes(numericCourseId)) {
+          logger.warn(`[COURSE TEST LIST] Unauthorized course access attempt for courseId=${courseId}`);
           return res.status(403).json({ success: false, message: 'Unauthorized course access' });
         }
-        where.courseId = courseId;
+        where.courseId = numericCourseId;
       } else {
         where.courseId = { [Op.in]: ownedCourseIds };
       }
@@ -728,6 +737,8 @@ const practiceController = {
         order: [['createdAt', 'DESC']]
       });
 
+      logger.info(`[COURSE TEST LIST] returnedTests count=${tests.length}`);
+
       return res.status(200).json({ success: true, data: tests });
     } catch (error) {
       logger.error('GET INSTRUCTOR TESTS FAILED:', error.message);
@@ -741,7 +752,7 @@ const practiceController = {
       const { courseId, type, difficulty, search } = req.query;
 
       const ownedCourses = await Course.findAll({
-        where: { instructorId },
+        where: { [Op.or]: [{ instructorId }, { instructor_id: instructorId }] },
         attributes: ['id']
       });
       const ownedCourseIds = ownedCourses.map(c => c.id);
@@ -791,7 +802,7 @@ const practiceController = {
       if (!test) return res.status(404).json({ success: false, message: 'Test not found' });
 
       // Verify ownership
-      if (test.createdBy !== instructorId && req.user.accountType !== 'Admin') {
+      if (Number(test.createdBy) !== Number(instructorId) && req.user.accountType !== 'Admin') {
         return res.status(403).json({ success: false, message: 'Forbidden: You do not own this test' });
       }
 
@@ -810,7 +821,7 @@ const practiceController = {
       const test = await PracticeTest.findByPk(testId);
       if (!test) return res.status(404).json({ success: false, message: 'Test not found' });
 
-      if (test.createdBy !== instructorId && req.user.accountType !== 'Admin') {
+      if (Number(test.createdBy) !== Number(instructorId) && req.user.accountType !== 'Admin') {
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
@@ -839,7 +850,7 @@ const practiceController = {
 
       // Fetch all published tests for this course
       const tests = await PracticeTest.findAll({
-        where: { courseId, scope: 'COURSE', status: 'published' },
+        where: { courseId: Number(courseId), scope: 'COURSE', status: 'published' },
         include: [
           {
             model: PracticeQuestion,
@@ -864,18 +875,23 @@ const practiceController = {
       const { courseId, title, description, testType, duration, totalMarks, passingPercentage, status, questionIds } = req.body;
       const instructorId = req.user.id;
 
+      logger.info(`[COURSE TEST CREATE] payload=${JSON.stringify(req.body)}, instructorId=${instructorId}`);
+
       if (!courseId || !title) {
         return res.status(400).json({ success: false, message: 'Course ID and title are required' });
       }
 
+      const numericCourseId = Number(courseId);
+
       // Security check: Verify course exists and is owned by logged-in instructor
-      const course = await Course.findByPk(courseId);
+      const course = await Course.findByPk(numericCourseId);
       if (!course) {
         return res.status(404).json({ success: false, message: 'Course not found' });
       }
 
-      // Compare instructorId (checking both instructorId / instructor_id fields)
-      if (course.instructorId !== instructorId && course.instructor_id !== instructorId && req.user.accountType !== 'Admin' && req.user.accountType !== 'Superadmin') {
+      const courseInstructorId = course.instructorId || course.instructor_id;
+      if (Number(courseInstructorId) !== Number(instructorId) && req.user.accountType !== 'Admin' && req.user.accountType !== 'Superadmin') {
+        logger.warn(`[COURSE TEST CREATE FORBIDDEN] courseInstructorId=${courseInstructorId}, instructorId=${instructorId}`);
         return res.status(403).json({ success: false, message: 'Forbidden: You can only create practice tests for your own courses' });
       }
 
@@ -890,7 +906,7 @@ const practiceController = {
         title,
         description: description || '',
         testType: testType || 'Course Test',
-        courseId,
+        courseId: numericCourseId,
         duration: duration || 15,
         totalMarks: totalMarks || 10,
         passingPercentage: passingPercentage || 40,
@@ -910,7 +926,26 @@ const practiceController = {
         await PracticeTestQuestion.bulkCreate(testQuestions);
       }
 
-      return res.status(201).json({ success: true, data: test, message: `Course Practice Test ${testStatus === 'published' ? 'published' : 'saved as draft'} successfully` });
+      // Query database using the returned test ID and verify record actually exists
+      const fullTest = await PracticeTest.findByPk(test.id, {
+        include: [
+          { model: Course, as: 'course', attributes: ['id', 'courseName'] },
+          { model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] } }
+        ]
+      });
+
+      if (!fullTest) {
+        logger.error(`[COURSE TEST DB VERIFY FAILED] testId=${test.id}`);
+        return res.status(500).json({ success: false, message: 'Database persistence failed: Created test could not be retrieved.' });
+      }
+
+      logger.info(`[COURSE TEST CREATED & VERIFIED] id=${fullTest.id}, courseId=${fullTest.courseId}, scope=${fullTest.scope}, status=${fullTest.status}`);
+
+      return res.status(201).json({
+        success: true,
+        data: fullTest,
+        message: `Course Practice Test ${testStatus === 'published' ? 'published' : 'saved as draft'} successfully`
+      });
     } catch (error) {
       logger.error('CREATE INSTRUCTOR TEST FAILED:', error.message);
       return res.status(500).json({ success: false, message: error.message });
