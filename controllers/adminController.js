@@ -887,6 +887,5 @@ module.exports = {
   getLiveSessions, createLiveSession, updateLiveSession, deleteLiveSession,
   getSections, createSection, updateSection, deleteSection,
   getSubSections, createSubSection, updateSubSection, deleteSubSection,
-  getContacts, updateContactStatus, deleteContact,
-  getNotifications
+  getContacts, updateContactStatus, deleteContact
 };

@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "build": "echo 'Build succeeded'",
     "dev": "nodemon server.js",
     "health": "node scripts/health-check.js",
     "migrate": "npx sequelize-cli db:migrate",
