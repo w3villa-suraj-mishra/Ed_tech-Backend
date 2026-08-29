@@ -1005,8 +1005,10 @@ const practiceController = {
           const attemptsCount = userAttempts.length;
           let bestScorePercentage = null;
           let lastAttemptAt = null;
+          let latestAttemptId = null;
 
           if (attemptsCount > 0) {
+            latestAttemptId = userAttempts[0].id;
             lastAttemptAt = userAttempts[0].createdAt;
             const maxScore = Math.max(...userAttempts.map(a => Number(a.score || 0)));
             const total = Number(testItem.totalMarks || 10);
@@ -1017,6 +1019,7 @@ const practiceController = {
             ...testData,
             questionCount: testData.questions ? testData.questions.length : testData.numberOfQuestions || 0,
             attemptsCount,
+            latestAttemptId,
             bestScorePercentage,
             lastAttemptAt
           };
