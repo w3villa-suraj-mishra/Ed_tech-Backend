@@ -9,7 +9,8 @@ const {
   PracticeAttempt,
   PracticeAttemptAnswer,
   User,
-  Course
+  Course,
+  Enrollment
 } = models;
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
