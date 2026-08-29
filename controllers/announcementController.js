@@ -34,6 +34,7 @@ const calculateEffectiveStatus = (status, startAt, endAt) => {
  */
 exports.createAnnouncement = async (req, res) => {
   try {
+    await ensureTablesExist();
     const {
       title,
       message,
@@ -111,6 +112,7 @@ exports.createAnnouncement = async (req, res) => {
  */
 exports.getAllAnnouncements = async (req, res) => {
   try {
+    await ensureTablesExist();
     const { status, audience, search } = req.query;
     const where = {};
 
@@ -307,6 +309,19 @@ exports.deleteAnnouncement = async (req, res) => {
 };
 
 
+// Helper to ensure database tables exist (safeguard for serverless or non-synced DBs)
+let tablesSynced = false;
+const ensureTablesExist = async () => {
+  if (tablesSynced) return;
+  try {
+    await Announcement.sync();
+    await AnnouncementDismissal.sync();
+    tablesSynced = true;
+  } catch (e) {
+    logger.error('Error auto-syncing announcement tables:', e.message);
+  }
+};
+
 // ── PUBLIC / LEARNER CONTROLLERS ─────────────────────────────────────────────
 
 /**
@@ -314,20 +329,23 @@ exports.deleteAnnouncement = async (req, res) => {
  */
 exports.getActiveAnnouncement = async (req, res) => {
   try {
+    await ensureTablesExist();
     const now = new Date();
-    const userRole = req.user ? req.user.accountType : 'Student';
+    const userRole = req.user ? (req.user.accountType || req.user.account_type) : 'Student';
     const userId = req.user ? req.user.id : null;
 
-    // Audience filter: ALL always allowed.
-    // If Student: ALL or STUDENTS
+    // Audience filter:
+    // ALL is always visible.
+    // If Student/Guest: ALL or STUDENTS
     // If Instructor: ALL or INSTRUCTORS
+    // If Admin/Superadmin: ALL, STUDENTS, INSTRUCTORS
     const allowedAudiences = ['ALL'];
-    if (userRole === 'Student' || userRole === 'StudentUser') {
-      allowedAudiences.push('STUDENTS');
-    } else if (userRole === 'Instructor') {
+    if (userRole === 'Instructor') {
       allowedAudiences.push('INSTRUCTORS');
-    } else {
+    } else if (userRole === 'Admin' || userRole === 'Superadmin') {
       allowedAudiences.push('STUDENTS', 'INSTRUCTORS');
+    } else {
+      allowedAudiences.push('STUDENTS');
     }
 
     // Get list of dismissed announcement IDs if user is logged in
@@ -368,7 +386,8 @@ exports.getActiveAnnouncement = async (req, res) => {
     if (!announcements || announcements.length === 0) {
       return res.status(200).json({
         success: true,
-        data: null
+        data: null,
+        announcement: null
       });
     }
 
@@ -385,7 +404,8 @@ exports.getActiveAnnouncement = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: activeItem
+      data: activeItem,
+      announcement: activeItem
     });
   } catch (error) {
     logger.error('Error fetching active announcement:', error);
@@ -393,6 +413,7 @@ exports.getActiveAnnouncement = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: null,
+      announcement: null,
       error: error.message
     });
   }
@@ -403,6 +424,7 @@ exports.getActiveAnnouncement = async (req, res) => {
  */
 exports.dismissAnnouncement = async (req, res) => {
   try {
+    await ensureTablesExist();
     const { id } = req.params;
     const userId = req.user ? req.user.id : null;
 
@@ -432,3 +454,4 @@ exports.dismissAnnouncement = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
