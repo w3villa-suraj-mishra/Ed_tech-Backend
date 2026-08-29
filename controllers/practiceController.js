@@ -39,6 +39,33 @@ const checkRunCodeRateLimit = (userId) => {
   return true;
 };
 
+const parseCodingDetails = (details) => {
+  if (!details) return null;
+  let parsed = details;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch (e) {
+      return null;
+    }
+  }
+  let testCases = parsed.testCases;
+  if (typeof testCases === 'string') {
+    try {
+      testCases = JSON.parse(testCases);
+    } catch (e) {
+      testCases = [];
+    }
+  }
+  if (!Array.isArray(testCases)) {
+    testCases = [];
+  }
+  return {
+    ...parsed,
+    testCases
+  };
+};
+
 const practiceController = {
   // ----------------------------------------------------
   // RUN CODE API (SECURE ISOLATED SANDBOX RUNNER)
@@ -68,8 +95,10 @@ const practiceController = {
         return res.status(400).json({ success: false, message: 'Target question is not a Coding question.' });
       }
 
+      const codingDetails = parseCodingDetails(question.codingDetails);
+
       // Filter ONLY visible test cases for security (Never expose hidden test cases)
-      let visibleCases = (question.codingDetails?.testCases || []).filter(tc => !tc.isHidden);
+      let visibleCases = (codingDetails?.testCases || []).filter(tc => !tc.isHidden);
 
       if (visibleCases.length === 0 && input !== undefined) {
         visibleCases = [{ input, expectedOutput: '', isHidden: false }];
@@ -79,7 +108,7 @@ const practiceController = {
 
       const result = await codeExecutionService.runCode({
         questionId,
-        language: language || question.codingDetails?.language || 'python',
+        language: language || codingDetails?.language || 'python',
         sourceCode: sourceCode || '',
         testCases: visibleCases
       });
@@ -1216,18 +1245,21 @@ const practiceController = {
             bestScorePercentage = total > 0 ? Math.round((maxScore / total) * 100) : 0;
           }
 
-          // Security: Filter hidden test cases from student response
+          // Security: Filter hidden test cases from student response safely
           const sanitizedQuestions = (testData.questions || []).map(q => {
-            if (q.type === 'Coding' && q.codingDetails && Array.isArray(q.codingDetails.testCases)) {
-              return {
-                ...q,
-                codingDetails: {
-                  ...q.codingDetails,
-                  testCases: q.codingDetails.testCases
-                    .filter(tc => !tc.isHidden)
-                    .map(tc => ({ input: tc.input, output: tc.output || tc.expectedOutput }))
-                }
-              };
+            if (q.type === 'Coding') {
+              const cd = parseCodingDetails(q.codingDetails);
+              if (cd) {
+                return {
+                  ...q,
+                  codingDetails: {
+                    ...cd,
+                    testCases: (cd.testCases || [])
+                      .filter(tc => !tc.isHidden)
+                      .map(tc => ({ input: tc.input || '', output: tc.output || tc.expectedOutput || '' }))
+                  }
+                };
+              }
             }
             return q;
           });
