@@ -39,13 +39,32 @@ const courseController = {
       // 4. Certifications: Count total course certificates issued
       const certificationsCount = await CourseCertificate.count();
 
+      // 5. Hours Learned: Sum of all subsection durations (assuming in seconds)
+      const totalDuration = await SubSection.sum('duration');
+      const hoursLearned = totalDuration ? Math.round(totalDuration / 3600) : 0;
+
+      // 6. Student Rating Overall: Average of all ratings
+      const avgRatingResult = await RatingAndReview.aggregate('rating', 'avg', { plain: false });
+      // aggregate('rating', 'avg') can return an array or object depending on plain: false/true. Let's use sequelize.fn
+      // Alternatively, we can use findOne with sequelize.fn('AVG', sequelize.col('rating'))
+      
+      const averageRatingResult = await RatingAndReview.findAll({
+        attributes: [[RatingAndReview.sequelize.fn('AVG', RatingAndReview.sequelize.col('rating')), 'avgRating']],
+        raw: true
+      });
+      const averageRating = (averageRatingResult && averageRatingResult[0] && averageRatingResult[0].avgRating) 
+        ? Number(averageRatingResult[0].avgRating).toFixed(1) 
+        : 0;
+
       return res.status(200).json({
         success: true,
         data: {
           learnersCount,
           coursesCount,
           projectsCount,
-          certificationsCount
+          certificationsCount,
+          hoursLearned,
+          averageRating
         }
       });
     } catch (error) {
@@ -528,6 +547,9 @@ const courseController = {
           {
             association: 'sections',
             include: [{ association: 'subSections' }]
+          },
+          {
+            association: 'ratingAndReviews'
           }
         ],
         order: [['createdAt', 'DESC']]

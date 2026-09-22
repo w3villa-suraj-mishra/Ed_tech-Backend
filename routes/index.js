@@ -19,7 +19,13 @@ const {
 } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
+const siteConfigController = require('../controllers/siteConfigController');
 const announcementRoutes = require('./announcementRoutes');
+
+// ==========================================
+// SITE CONFIG ROUTES
+// ==========================================
+router.get('/config/:key', siteConfigController.getConfigByKey);
 
 // ==========================================
 // ANNOUNCEMENT ROUTES (PUBLIC / LEARNER)

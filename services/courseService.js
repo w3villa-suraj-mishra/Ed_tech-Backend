@@ -58,6 +58,15 @@ const formatCourse = async (course, currentUserId = null) => {
   result.price = pricing.finalPrice;
   result.originalPrice = pricing.originalPrice;
 
+  let totalRating = 0;
+  let reviewsCount = 0;
+  if (coursePlain.ratingAndReviews) {
+    reviewsCount = coursePlain.ratingAndReviews.length;
+    coursePlain.ratingAndReviews.forEach(r => totalRating += (r.rating || 0));
+  }
+  result.rating = reviewsCount > 0 ? (totalRating / reviewsCount).toFixed(1) : "0.0";
+  result.reviewsCount = reviewsCount;
+
   const completedVideos = [];
   if (currentUserId && coursePlain.courseProgresses) {
     coursePlain.courseProgresses.forEach((progress) => {
