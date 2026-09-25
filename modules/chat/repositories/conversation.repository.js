@@ -146,16 +146,19 @@ class ConversationRepository {
           model: User,
           as: 'user',
           where: Object.keys(userIncludeWhere).length > 0 ? userIncludeWhere : undefined,
+          required: Object.keys(userIncludeWhere).length > 0,
           attributes: ['id', 'firstName', 'lastName', 'email', 'image', 'accountType']
         },
         {
           model: User,
           as: 'assignee',
+          required: false,
           attributes: ['id', 'firstName', 'lastName', 'email', 'image', 'accountType']
         },
         {
           model: Course,
           as: 'course',
+          required: false,
           attributes: ['id', 'courseName', 'thumbnail', 'price']
         }
       ]

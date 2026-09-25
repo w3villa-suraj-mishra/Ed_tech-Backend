@@ -127,7 +127,7 @@ const getNotifications = async (req, res) => {
   try {
     const [pendingContacts, recentReviews, newEnrollments] = await Promise.all([
       ContactUs.findAll({ where: { status: 'Pending' }, limit: 5, order: [['createdAt', 'DESC']] }),
-      RatingAndReview.findAll({ limit: 5, order: [['createdAt', 'DESC']], include: [{ model: User, attributes: ['firstName', 'lastName'] }] }),
+      RatingAndReview.findAll({ limit: 5, order: [['createdAt', 'DESC']], include: [{ model: User, as: 'user', attributes: ['firstName', 'lastName'] }] }),
       Enrollment.findAll({ limit: 5, order: [['createdAt', 'DESC']], include: [{ model: User, as: 'user', attributes: ['firstName', 'lastName'] }, { model: Course, as: 'course', attributes: ['courseName'] }] })
     ]);
 
@@ -145,11 +145,12 @@ const getNotifications = async (req, res) => {
     });
 
     recentReviews.forEach(r => {
+      const u = r.user || r.User;
       notifications.push({
         id: `review-${r.id}`,
         type: 'review',
         title: 'New Course Review',
-        message: `${r.User ? r.User.firstName : 'User'} left a ${r.rating}★ review`,
+        message: `${u ? u.firstName : 'User'} left a ${r.rating}★ review`,
         time: r.createdAt,
         link: '/admin/reviews'
       });

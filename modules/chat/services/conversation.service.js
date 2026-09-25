@@ -135,7 +135,7 @@ class ConversationService {
 
   async getAdminConversations(query, adminUser) {
     await ensureTablesSynced();
-    const isSuperAdmin = adminUser.accountType === 'Superadmin';
+    const isSuperAdmin = String(adminUser?.accountType || '').toLowerCase() === 'superadmin';
     const limit = parseInt(query.limit, 10) || 20;
     const page = parseInt(query.page, 10) || 1;
     const offset = (page - 1) * limit;
@@ -148,7 +148,7 @@ class ConversationService {
       limit,
       offset,
       isSuperAdmin,
-      adminId: adminUser.id,
+      adminId: adminUser?.id,
       myChatsOnly: query.myChatsOnly === 'true'
     });
 

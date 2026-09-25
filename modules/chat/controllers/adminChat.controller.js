@@ -5,7 +5,8 @@ const logger = require('../../../utils/logger');
 class AdminChatController {
   async getAdminConversations(req, res) {
     try {
-      const data = await conversationService.getAdminConversations(req.query, req.user);
+      const adminUser = req.user || req.admin;
+      const data = await conversationService.getAdminConversations(req.query, adminUser);
       return res.status(200).json({
         success: true,
         ...data
@@ -23,10 +24,11 @@ class AdminChatController {
     try {
       const conversationId = parseInt(req.params.conversationId, 10);
       const { assignedTo } = req.body;
+      const adminUser = req.user || req.admin;
 
       // Only Superadmin can reassign any conversation, or Admin can assign unassigned to themselves
-      const isSuperAdmin = req.user.accountType === 'Superadmin';
-      if (!isSuperAdmin && assignedTo && assignedTo !== req.user.id) {
+      const isSuperAdmin = String(adminUser?.accountType || '').toLowerCase() === 'superadmin';
+      if (!isSuperAdmin && assignedTo && assignedTo !== adminUser?.id) {
         return res.status(403).json({
           success: false,
           message: 'Only Superadmin can assign conversations to other staff members'
@@ -36,7 +38,7 @@ class AdminChatController {
       const result = await assignmentService.assignConversation({
         conversationId,
         assignedToId: assignedTo ? parseInt(assignedTo, 10) : null,
-        assignedByUser: req.user
+        assignedByUser: adminUser
       });
 
       return res.status(200).json({
@@ -56,8 +58,9 @@ class AdminChatController {
     try {
       const conversationId = parseInt(req.params.conversationId, 10);
       const { status } = req.body;
+      const adminUser = req.user || req.admin;
 
-      const result = await conversationService.updateStatus(conversationId, status, req.user);
+      const result = await conversationService.updateStatus(conversationId, status, adminUser);
 
       return res.status(200).json({
         success: true,
