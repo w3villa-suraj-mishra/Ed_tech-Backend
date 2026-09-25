@@ -1,0 +1,35 @@
+const CONVERSATION_STATUS = {
+  UNASSIGNED: 'UNASSIGNED',
+  OPEN: 'OPEN',
+  PENDING: 'PENDING',
+  CLOSED: 'CLOSED'
+};
+
+const SENDER_TYPES = {
+  USER: 'USER',
+  ADMIN: 'ADMIN',
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  SYSTEM: 'SYSTEM'
+};
+
+const MESSAGE_TYPES = {
+  TEXT: 'TEXT',
+  IMAGE: 'IMAGE',
+  FILE: 'FILE',
+  VIDEO: 'VIDEO',
+  SYSTEM: 'SYSTEM'
+};
+
+const USER_ROLES = {
+  SUPERADMIN: 'Superadmin',
+  ADMIN: 'Admin',
+  STUDENT: 'Student',
+  INSTRUCTOR: 'Instructor'
+};
+
+module.exports = {
+  CONVERSATION_STATUS,
+  SENDER_TYPES,
+  MESSAGE_TYPES,
+  USER_ROLES
+};

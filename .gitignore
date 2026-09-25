@@ -13,3 +13,5 @@ build/
 .idea/
 coverage/
 .nyc_output/
+uploads/*
+!uploads/.gitkeep

@@ -189,6 +189,9 @@ OfferRedemption.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 Course.hasMany(OfferRedemption, { foreignKey: 'courseId', as: 'offerRedemptions', onDelete: 'CASCADE' });
 OfferRedemption.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
 
+// Chat Module Models
+const { Conversation, Message } = require('../modules/chat/models');
+
 module.exports = {
   User,
   Profile,
@@ -222,5 +225,7 @@ module.exports = {
   AnnouncementDismissal,
   Offer,
   OfferCourse,
-  OfferRedemption
+  OfferRedemption,
+  Conversation,
+  Message
 };
