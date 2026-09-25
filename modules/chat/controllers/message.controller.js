@@ -110,14 +110,26 @@ class MessageController {
         });
       }
 
-      // Backend serves /uploads statically
-      const backendBase = process.env.BACKEND_URL || 'http://localhost:5000';
-      const fileUrl = `${backendBase}/uploads/${req.file.filename}`;
+      const isVideo = req.file.mimetype.startsWith('video/');
+      const isImage = req.file.mimetype.startsWith('image/');
+      let fileUrl = null;
+
+      try {
+        const { handleFileUpload } = require('../../../services/uploadService');
+        fileUrl = await handleFileUpload(req.file, isVideo);
+      } catch (uploadErr) {
+        logger.error('handleFileUpload error in chat:', uploadErr.message);
+      }
+
+      if (!fileUrl) {
+        const backendBase = process.env.BACKEND_URL || 'http://localhost:5000';
+        fileUrl = `${backendBase}/uploads/${req.file.filename}`;
+      }
 
       let messageType = MESSAGE_TYPES.FILE;
-      if (req.file.mimetype.startsWith('image/')) {
+      if (isImage) {
         messageType = MESSAGE_TYPES.IMAGE;
-      } else if (req.file.mimetype.startsWith('video/')) {
+      } else if (isVideo) {
         messageType = MESSAGE_TYPES.VIDEO;
       }
 
