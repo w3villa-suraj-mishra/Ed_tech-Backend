@@ -3,6 +3,21 @@ const messageRepository = require('../repositories/message.repository');
 const User = require('../../../models/User');
 const { CONVERSATION_STATUS, SENDER_TYPES, MESSAGE_TYPES } = require('../constants/chatConstants');
 
+let tablesSynced = false;
+async function ensureTablesSynced() {
+  if (tablesSynced) return;
+  try {
+    const { Conversation, Message } = require('../models');
+    if (Conversation && Message) {
+      await Conversation.sync();
+      await Message.sync();
+    }
+    tablesSynced = true;
+  } catch (e) {
+    // If sync already ran or handled, continue
+  }
+}
+
 class ConversationService {
   /**
    * Start a new conversation or retrieve current active one for student
@@ -15,6 +30,7 @@ class ConversationService {
     orderId = null,
     initialMessage = null
   }) {
+    await ensureTablesSynced();
     // Check if there is already an active (unclosed) conversation
     let conversation = await conversationRepository.findActiveByUser(userId, courseId);
 
@@ -77,6 +93,7 @@ class ConversationService {
   }
 
   async getUserConversations(userId, { limit = 20, offset = 0, includeArchived = false } = {}) {
+    await ensureTablesSynced();
     const { count, rows } = await conversationRepository.findByUser(userId, {
       limit,
       offset,
@@ -117,6 +134,7 @@ class ConversationService {
   }
 
   async getAdminConversations(query, adminUser) {
+    await ensureTablesSynced();
     const isSuperAdmin = adminUser.accountType === 'Superadmin';
     const limit = parseInt(query.limit, 10) || 20;
     const page = parseInt(query.page, 10) || 1;

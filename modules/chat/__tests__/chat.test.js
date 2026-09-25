@@ -19,6 +19,14 @@ describe('Chat Module Tests', () => {
 
     expect(testStudent).toBeDefined();
     expect(testSuperAdmin).toBeDefined();
+
+    if (testStudent) {
+      const existing = await Conversation.findAll({ where: { userId: testStudent.id } });
+      for (const c of existing) {
+        await Message.destroy({ where: { conversationId: c.id } });
+        await c.destroy();
+      }
+    }
   });
 
   afterAll(async () => {
