@@ -1,139 +1,108 @@
-const { Article } = require('../models');
+const { articleQuery } = require('../nativequery');
 const logger = require('../utils/logger');
 
 const articleController = {
-  // Get all published articles (Public/Student)
-  getAllArticles: async (req, res) => {
+  getArticles: async (req, res) => {
     try {
-      const articles = await Article.findAll({
-        where: { published: true },
-        order: [['createdAt', 'DESC']],
-      });
+      const articles = await articleQuery.findAllPublishedArticlesQuery();
       return res.status(200).json({
         success: true,
-        data: articles,
+        data: articles
       });
     } catch (error) {
-      logger.error('GET ALL ARTICLES FAILED:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to fetch articles',
-      });
+      logger.error('GET ARTICLES FAILED:', error.message);
+      return res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  // Get all articles including drafts (Admin)
-  getAdminArticles: async (req, res) => {
+  getAllArticlesAdmin: async (req, res) => {
     try {
-      const articles = await Article.findAll({
-        order: [['createdAt', 'DESC']],
-      });
+      const articles = await articleQuery.findAllArticlesQuery();
       return res.status(200).json({
         success: true,
-        data: articles,
+        data: articles
       });
     } catch (error) {
-      logger.error('GET ADMIN ARTICLES FAILED:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to fetch admin articles',
-      });
+      logger.error('GET ALL ARTICLES ADMIN FAILED:', error.message);
+      return res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  // Create article (Admin)
   createArticle: async (req, res) => {
     try {
-      const { title, category, readTime, author, summary, content, coverImage, published } = req.body;
+      const { title, content, author, readTime, category, status, imageUrl } = req.body;
 
-      if (!title || !summary || !content) {
-        return res.status(400).json({
-          success: false,
-          message: 'Title, summary, and content are required.',
-        });
+      if (!title || !content) {
+        return res.status(400).json({ success: false, message: 'Title and content are required' });
       }
 
-      const article = await Article.create({
+      const article = await articleQuery.createArticleQuery({
         title,
-        category: category || 'Engineering & Tech',
-        readTime: readTime || '5 min read',
-        author: author || `${req.user.firstName || 'Admin'} ${req.user.lastName || ''}`.trim(),
-        summary,
         content,
-        coverImage: coverImage || null,
-        published: published !== undefined ? published : true,
+        author: author || 'Admin',
+        readTime: readTime || '5 min read',
+        category: category || 'General',
+        status: status || 'Published',
+        imageUrl: imageUrl || null
       });
 
       return res.status(201).json({
         success: true,
-        message: 'Article created successfully!',
-        data: article,
+        message: 'Article created successfully',
+        data: article
       });
     } catch (error) {
       logger.error('CREATE ARTICLE FAILED:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to create article',
-      });
+      return res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  // Update article (Admin)
   updateArticle: async (req, res) => {
     try {
       const { id } = req.params;
-      const article = await Article.findByPk(id);
+      const article = await articleQuery.updateArticleQuery(id, req.body);
 
       if (!article) {
-        return res.status(404).json({
-          success: false,
-          message: 'Article not found.',
-        });
+        return res.status(404).json({ success: false, message: 'Article not found' });
       }
-
-      await article.update(req.body);
 
       return res.status(200).json({
         success: true,
-        message: 'Article updated successfully!',
-        data: article,
+        message: 'Article updated successfully',
+        data: article
       });
     } catch (error) {
       logger.error('UPDATE ARTICLE FAILED:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to update article',
-      });
+      return res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  // Delete article (Admin)
   deleteArticle: async (req, res) => {
     try {
       const { id } = req.params;
-      const article = await Article.findByPk(id);
+      const result = await articleQuery.deleteArticleQuery(id);
 
-      if (!article) {
-        return res.status(404).json({
-          success: false,
-          message: 'Article not found.',
-        });
+      if (!result) {
+        return res.status(404).json({ success: false, message: 'Article not found' });
       }
-
-      await article.destroy();
 
       return res.status(200).json({
         success: true,
-        message: 'Article deleted successfully!',
+        message: 'Article deleted successfully'
       });
     } catch (error) {
       logger.error('DELETE ARTICLE FAILED:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to delete article',
-      });
+      return res.status(500).json({ success: false, message: error.message });
     }
   },
+
+  getAllArticles: function(req, res) {
+    return this.getArticles(req, res);
+  },
+
+  getAdminArticles: function(req, res) {
+    return this.getAllArticlesAdmin(req, res);
+  }
 };
 
 module.exports = articleController;

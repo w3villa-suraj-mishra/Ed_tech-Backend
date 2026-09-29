@@ -1,38 +1,38 @@
-const { Notification, NotificationPreference, User, Course } = require('../models');
-const { notificationService } = require('../services/notificationService');
+const { notificationQuery } = require('../nativequery');
 const logger = require('../utils/logger');
 
 const notificationController = {
   /**
-   * GET /notifications
-   * Fetch paginated notifications for logged-in user
+   * Get unread notification count
    */
-  getUserNotifications: async (req, res) => {
+  getUnreadCount: async (req, res) => {
     try {
       const userId = req.user.id;
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 20;
-      const offset = (page - 1) * limit;
+      const unreadCount = await notificationQuery.getUnreadNotificationCountQuery(userId);
 
-      const { count, rows } = await Notification.findAndCountAll({
-        where: { userId },
-        order: [['createdAt', 'DESC']],
-        limit,
-        offset
+      return res.status(200).json({
+        success: true,
+        data: { unreadCount }
       });
+    } catch (error) {
+      logger.error('GET UNREAD NOTIFICATION COUNT FAILED:', error.message);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
 
-      const unreadCount = await Notification.count({
-        where: { userId, isRead: false }
-      });
+  /**
+   * Get notifications list for user
+   */
+  getNotifications: async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { notifications, unreadCount } = await notificationQuery.getUserNotificationsQuery(userId, 20);
 
       return res.status(200).json({
         success: true,
         data: {
-          notifications: rows,
-          totalCount: count,
-          unreadCount,
-          page,
-          totalPages: Math.ceil(count / limit)
+          notifications,
+          unreadCount
         }
       });
     } catch (error) {
@@ -42,87 +42,59 @@ const notificationController = {
   },
 
   /**
-   * GET /notifications/unread-count
-   */
-  getUnreadCount: async (req, res) => {
-    try {
-      const userId = req.user.id;
-      const unreadCount = await Notification.count({
-        where: { userId, isRead: false }
-      });
-      return res.status(200).json({ success: true, unreadCount });
-    } catch (error) {
-      logger.error('GET UNREAD COUNT FAILED:', error.message);
-      return res.status(500).json({ success: false, message: error.message });
-    }
-  },
-
-  /**
-   * PATCH /notifications/:id/read
+   * Mark a single notification as read
    */
   markAsRead: async (req, res) => {
     try {
-      const { id } = req.params;
       const userId = req.user.id;
+      const { id } = req.params;
 
-      const notification = await Notification.findOne({
-        where: { id, userId }
+      const unreadCount = await notificationQuery.markNotificationReadQuery(id, userId);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Notification marked as read',
+        data: { unreadCount }
       });
-
-      if (!notification) {
-        return res.status(404).json({ success: false, message: 'Notification not found' });
-      }
-
-      await notification.update({
-        isRead: true,
-        readAt: new Date()
-      });
-
-      const unreadCount = await Notification.count({
-        where: { userId, isRead: false }
-      });
-
-      return res.status(200).json({ success: true, notification, unreadCount });
     } catch (error) {
-      logger.error('MARK AS READ FAILED:', error.message);
+      logger.error('MARK NOTIFICATION READ FAILED:', error.message);
       return res.status(500).json({ success: false, message: error.message });
     }
   },
 
   /**
-   * PATCH /notifications/read-all
+   * Mark all notifications as read
    */
   markAllAsRead: async (req, res) => {
     try {
       const userId = req.user.id;
+      const unreadCount = await notificationQuery.markAllNotificationsReadQuery(userId);
 
-      await Notification.update(
-        { isRead: true, readAt: new Date() },
-        { where: { userId, isRead: false } }
-      );
-
-      return res.status(200).json({ success: true, message: 'All notifications marked as read', unreadCount: 0 });
+      return res.status(200).json({
+        success: true,
+        message: 'All notifications marked as read',
+        data: { unreadCount }
+      });
     } catch (error) {
-      logger.error('MARK ALL AS READ FAILED:', error.message);
+      logger.error('MARK ALL NOTIFICATIONS READ FAILED:', error.message);
       return res.status(500).json({ success: false, message: error.message });
     }
   },
 
   /**
-   * DELETE /notifications/:id
+   * Delete a notification
    */
   deleteNotification: async (req, res) => {
     try {
-      const { id } = req.params;
       const userId = req.user.id;
+      const { id } = req.params;
 
-      const notification = await Notification.findOne({ where: { id, userId } });
-      if (!notification) {
-        return res.status(404).json({ success: false, message: 'Notification not found' });
-      }
+      await notificationQuery.deleteNotificationQuery(id, userId);
 
-      await notification.destroy();
-      return res.status(200).json({ success: true, message: 'Notification deleted' });
+      return res.status(200).json({
+        success: true,
+        message: 'Notification deleted'
+      });
     } catch (error) {
       logger.error('DELETE NOTIFICATION FAILED:', error.message);
       return res.status(500).json({ success: false, message: error.message });
@@ -130,87 +102,85 @@ const notificationController = {
   },
 
   /**
-   * GET /notifications/preferences
+   * Get notification preferences
    */
   getPreferences: async (req, res) => {
     try {
       const userId = req.user.id;
-      let pref = await NotificationPreference.findOne({ where: { userId } });
-      if (!pref) {
-        pref = await NotificationPreference.create({ userId });
-      }
-      return res.status(200).json({ success: true, data: pref });
+      const pref = await notificationQuery.getUserNotificationPreferencesQuery(userId);
+
+      return res.status(200).json({
+        success: true,
+        data: pref
+      });
     } catch (error) {
-      logger.error('GET PREFERENCES FAILED:', error.message);
+      logger.error('GET NOTIFICATION PREFERENCES FAILED:', error.message);
       return res.status(500).json({ success: false, message: error.message });
     }
   },
 
   /**
-   * PATCH /notifications/preferences
+   * Update notification preferences
    */
   updatePreferences: async (req, res) => {
     try {
       const userId = req.user.id;
-      let pref = await NotificationPreference.findOne({ where: { userId } });
-      if (!pref) {
-        pref = await NotificationPreference.create({ userId, ...req.body });
-      } else {
-        await pref.update(req.body);
-      }
-      return res.status(200).json({ success: true, data: pref, message: 'Notification preferences updated' });
+      const pref = await notificationQuery.updateUserNotificationPreferencesQuery(userId, req.body);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Preferences updated successfully',
+        data: pref
+      });
     } catch (error) {
-      logger.error('UPDATE PREFERENCES FAILED:', error.message);
+      logger.error('UPDATE NOTIFICATION PREFERENCES FAILED:', error.message);
       return res.status(500).json({ success: false, message: error.message });
     }
   },
 
   /**
-   * POST /admin/notifications (Manual Admin Broadcast/Targeted Notification)
+   * Admin Broadcast Notification
    */
-  createAdminNotification: async (req, res) => {
+  broadcastNotification: async (req, res) => {
     try {
-      const { title, message, type = 'PLATFORM_ANNOUNCEMENT', audience = 'All Users', link, courseId } = req.body;
+      const { title, message, type, recipientType, courseId, linkUrl } = req.body;
 
       if (!title || !message) {
         return res.status(400).json({ success: false, message: 'Title and message are required' });
       }
 
-      let recipientUserIds = [];
+      const recipientTypeVal = recipientType || 'ALL';
+      const userIds = await notificationQuery.getRecipientsForBroadcastQuery(recipientTypeVal, courseId);
 
-      if (audience === 'All Users') {
-        const users = await User.findAll({ attributes: ['id'] });
-        recipientUserIds = users.map(u => u.id);
-      } else if (audience === 'Students') {
-        const students = await User.findAll({ where: { accountType: 'Student' }, attributes: ['id'] });
-        recipientUserIds = students.map(u => u.id);
-      } else if (audience === 'Instructors') {
-        const instructors = await User.findAll({ where: { accountType: 'Instructor' }, attributes: ['id'] });
-        recipientUserIds = instructors.map(u => u.id);
-      } else if (audience === 'Specific Course Students' && courseId) {
-        const enrollments = await require('../models').Enrollment.findAll({ where: { courseId }, attributes: ['userId'] });
-        recipientUserIds = enrollments.map(e => e.userId);
+      if (userIds.length > 0) {
+        const notificationsToCreate = userIds.map(uId => ({
+          userId: uId,
+          title,
+          message,
+          type: type || 'SYSTEM_ANNOUNCEMENT',
+          linkUrl: linkUrl || null,
+          isRead: false
+        }));
+
+        await notificationQuery.bulkCreateNotificationsQuery(notificationsToCreate);
       }
-
-      const created = await notificationService.notifyUsers(recipientUserIds, {
-        type,
-        source: 'ADMIN',
-        title,
-        message,
-        link: link || '/dashboard',
-        entityType: courseId ? 'COURSE' : 'ANNOUNCEMENT',
-        entityId: courseId || null
-      });
 
       return res.status(200).json({
         success: true,
-        message: `Notification dispatched to ${created.length} users.`,
-        sentCount: created.length
+        message: `Notification broadcast sent to ${userIds.length} users.`
       });
     } catch (error) {
-      logger.error('CREATE ADMIN NOTIFICATION FAILED:', error.message);
+      logger.error('BROADCAST NOTIFICATION FAILED:', error.message);
       return res.status(500).json({ success: false, message: error.message });
     }
+  },
+
+  getUserNotifications: function(req, res) {
+    return this.getNotifications(req, res);
+  },
+
+  createAdminNotification: function(req, res) {
+    return this.broadcastNotification(req, res);
   }
 };
 

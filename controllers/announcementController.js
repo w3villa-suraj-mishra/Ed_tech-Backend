@@ -1,5 +1,4 @@
-const { Announcement, AnnouncementDismissal } = require('../models');
-const { Op } = require('sequelize');
+const { announcementQuery } = require('../nativequery');
 const logger = require('../utils/logger');
 
 // Helper to sanitize URL schemes (prevent javascript:, data:, etc.)
@@ -34,7 +33,7 @@ const calculateEffectiveStatus = (status, startAt, endAt) => {
  */
 exports.createAnnouncement = async (req, res) => {
   try {
-    await ensureTablesExist();
+    await announcementQuery.syncAnnouncementTablesQuery();
     const {
       title,
       message,
@@ -79,7 +78,7 @@ exports.createAnnouncement = async (req, res) => {
 
     const effectiveStatus = status === 'ACTIVE' ? 'ACTIVE' : calculateEffectiveStatus(status, startAt, endAt);
 
-    const announcement = await Announcement.create({
+    const announcement = await announcementQuery.createAnnouncementQuery({
       title: title.trim(),
       message: message.trim(),
       highlightText: highlightText ? highlightText.trim() : null,
@@ -112,38 +111,14 @@ exports.createAnnouncement = async (req, res) => {
  */
 exports.getAllAnnouncements = async (req, res) => {
   try {
-    await ensureTablesExist();
+    await announcementQuery.syncAnnouncementTablesQuery();
     const { status, audience, search } = req.query;
-    const where = {};
 
-    if (status && status !== 'all' && status !== 'All') {
-      where.status = status.toUpperCase();
-    }
+    const announcements = await announcementQuery.findAllAnnouncementsFilteredQuery({ status, audience, search });
 
-    if (audience && audience !== 'all' && audience !== 'All') {
-      where.audience = audience.toUpperCase();
-    }
-
-    if (search && search.trim()) {
-      where[Op.or] = [
-        { title: { [Op.iLike]: `%${search.trim()}%` } },
-        { message: { [Op.iLike]: `%${search.trim()}%` } },
-        { highlightText: { [Op.iLike]: `%${search.trim()}%` } }
-      ];
-    }
-
-    const announcements = await Announcement.findAll({
-      where,
-      order: [
-        ['priority', 'DESC'],
-        ['createdAt', 'DESC']
-      ]
-    });
-
-    // Auto update expired statuses in response
     const now = new Date();
     const updatedAnnouncements = announcements.map((item) => {
-      const a = item.toJSON();
+      const a = typeof item.toJSON === 'function' ? item.toJSON() : item;
       if (a.status !== 'DRAFT' && a.status !== 'ARCHIVED' && a.endAt && new Date(a.endAt) <= now) {
         a.status = 'EXPIRED';
       } else if (a.status !== 'DRAFT' && a.status !== 'ARCHIVED' && a.startAt && new Date(a.startAt) > now) {
@@ -168,7 +143,7 @@ exports.getAllAnnouncements = async (req, res) => {
 exports.getAnnouncementById = async (req, res) => {
   try {
     const { id } = req.params;
-    const announcement = await Announcement.findByPk(id);
+    const announcement = await announcementQuery.findAnnouncementByIdQuery(id);
 
     if (!announcement) {
       return res.status(404).json({ success: false, message: 'Announcement not found' });
@@ -187,7 +162,7 @@ exports.getAnnouncementById = async (req, res) => {
 exports.updateAnnouncement = async (req, res) => {
   try {
     const { id } = req.params;
-    const announcement = await Announcement.findByPk(id);
+    const announcement = await announcementQuery.findAnnouncementByIdQuery(id);
 
     if (!announcement) {
       return res.status(404).json({ success: false, message: 'Announcement not found' });
@@ -226,7 +201,7 @@ exports.updateAnnouncement = async (req, res) => {
     const requestedStatus = status || announcement.status;
     const effectiveStatus = requestedStatus === 'ACTIVE' ? 'ACTIVE' : calculateEffectiveStatus(requestedStatus, newStartAt, newEndAt);
 
-    await announcement.update({
+    const updatedAnnouncement = await announcementQuery.updateAnnouncementQuery(id, {
       title: title !== undefined ? title.trim() : announcement.title,
       message: message !== undefined ? message.trim() : announcement.message,
       highlightText: highlightText !== undefined ? (highlightText ? highlightText.trim() : null) : announcement.highlightText,
@@ -245,7 +220,7 @@ exports.updateAnnouncement = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Announcement updated successfully',
-      data: announcement
+      data: updatedAnnouncement
     });
   } catch (error) {
     logger.error('Error updating announcement:', error);
@@ -265,19 +240,18 @@ exports.updateAnnouncementStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid status value' });
     }
 
-    const announcement = await Announcement.findByPk(id);
+    const announcement = await announcementQuery.findAnnouncementByIdQuery(id);
     if (!announcement) {
       return res.status(404).json({ success: false, message: 'Announcement not found' });
     }
 
-    // If Admin explicitly requests ACTIVE status, update status to ACTIVE without forced SCHEDULED status fallback
     const effectiveStatus = status === 'ACTIVE' ? 'ACTIVE' : calculateEffectiveStatus(status, announcement.startAt, announcement.endAt);
-    await announcement.update({ status: effectiveStatus });
+    const updatedAnnouncement = await announcementQuery.updateAnnouncementQuery(id, { status: effectiveStatus });
 
     return res.status(200).json({
       success: true,
       message: `Announcement status updated to ${effectiveStatus}`,
-      data: announcement
+      data: updatedAnnouncement
     });
   } catch (error) {
     logger.error('Error updating status:', error);
@@ -291,13 +265,11 @@ exports.updateAnnouncementStatus = async (req, res) => {
 exports.deleteAnnouncement = async (req, res) => {
   try {
     const { id } = req.params;
-    const announcement = await Announcement.findByPk(id);
+    const result = await announcementQuery.deleteAnnouncementQuery(id);
 
-    if (!announcement) {
+    if (!result) {
       return res.status(404).json({ success: false, message: 'Announcement not found' });
     }
-
-    await announcement.destroy();
 
     return res.status(200).json({
       success: true,
@@ -309,20 +281,6 @@ exports.deleteAnnouncement = async (req, res) => {
   }
 };
 
-
-// Helper to ensure database tables exist (safeguard for serverless or non-synced DBs)
-let tablesSynced = false;
-const ensureTablesExist = async () => {
-  if (tablesSynced) return;
-  try {
-    await Announcement.sync();
-    await AnnouncementDismissal.sync();
-    tablesSynced = true;
-  } catch (e) {
-    logger.error('Error auto-syncing announcement tables:', e.message);
-  }
-};
-
 // ── PUBLIC / LEARNER CONTROLLERS ─────────────────────────────────────────────
 
 /**
@@ -330,16 +288,10 @@ const ensureTablesExist = async () => {
  */
 exports.getActiveAnnouncement = async (req, res) => {
   try {
-    await ensureTablesExist();
-    const now = new Date();
+    await announcementQuery.syncAnnouncementTablesQuery();
     const userRole = req.user ? (req.user.accountType || req.user.account_type) : 'Student';
     const userId = req.user ? req.user.id : null;
 
-    // Audience filter:
-    // ALL is always visible.
-    // If Student/Guest: ALL or STUDENTS
-    // If Instructor: ALL or INSTRUCTORS
-    // If Admin/Superadmin: ALL, STUDENTS, INSTRUCTORS
     const allowedAudiences = ['ALL'];
     if (userRole === 'Instructor') {
       allowedAudiences.push('INSTRUCTORS');
@@ -349,40 +301,7 @@ exports.getActiveAnnouncement = async (req, res) => {
       allowedAudiences.push('STUDENTS');
     }
 
-    // Get list of dismissed announcement IDs if user is logged in
-    let dismissedIds = [];
-    if (userId) {
-      const dismissals = await AnnouncementDismissal.findAll({
-        where: { userId },
-        attributes: ['announcementId']
-      });
-      dismissedIds = dismissals.map(d => d.announcementId);
-    }
-
-    const where = {
-      status: { [Op.in]: ['ACTIVE', 'SCHEDULED'] },
-      audience: { [Op.in]: allowedAudiences },
-      [Op.and]: [
-        {
-          [Op.or]: [
-            { startAt: null },
-            { startAt: { [Op.lte]: now } }
-          ]
-        },
-        {
-          [Op.or]: [
-            { endAt: null },
-            { endAt: { [Op.gt]: now } }
-          ]
-        }
-      ]
-    };
-
-    if (dismissedIds.length > 0) {
-      where.id = { [Op.notIn]: dismissedIds };
-    }
-
-    const announcements = await Announcement.findAll({ where });
+    const announcements = await announcementQuery.getActiveUserAnnouncementQuery({ allowedAudiences, userId });
 
     if (!announcements || announcements.length === 0) {
       return res.status(200).json({
@@ -392,7 +311,6 @@ exports.getActiveAnnouncement = async (req, res) => {
       });
     }
 
-    // Sort by priority rank: High = 3, Normal = 2, Low = 1; then by createdAt DESC
     const priorityRank = { High: 3, Normal: 2, Low: 1 };
     announcements.sort((a, b) => {
       const rankA = priorityRank[a.priority] || 2;
@@ -401,7 +319,7 @@ exports.getActiveAnnouncement = async (req, res) => {
       return new Date(b.createdAt) - new Date(a.createdAt);
     });
 
-    const activeItem = announcements[0].toJSON();
+    const activeItem = typeof announcements[0].toJSON === 'function' ? announcements[0].toJSON() : announcements[0];
 
     return res.status(200).json({
       success: true,
@@ -410,7 +328,6 @@ exports.getActiveAnnouncement = async (req, res) => {
     });
   } catch (error) {
     logger.error('Error fetching active announcement:', error);
-    // Silent fail safely to prevent breaking layout
     return res.status(200).json({
       success: true,
       data: null,
@@ -425,26 +342,15 @@ exports.getActiveAnnouncement = async (req, res) => {
  */
 exports.dismissAnnouncement = async (req, res) => {
   try {
-    await ensureTablesExist();
+    await announcementQuery.syncAnnouncementTablesQuery();
     const { id } = req.params;
     const userId = req.user ? req.user.id : null;
 
     if (!userId) {
-      // Guest dismissal handled via local storage on frontend
       return res.status(200).json({ success: true, message: 'Dismissed locally' });
     }
 
-    await AnnouncementDismissal.findOrCreate({
-      where: {
-        announcementId: id,
-        userId
-      },
-      defaults: {
-        announcementId: id,
-        userId,
-        dismissedAt: new Date()
-      }
-    });
+    await announcementQuery.dismissAnnouncementQuery(userId, id);
 
     return res.status(200).json({
       success: true,
@@ -455,4 +361,3 @@ exports.dismissAnnouncement = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-

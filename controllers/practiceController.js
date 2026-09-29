@@ -1,20 +1,6 @@
-const models = require('../models');
-const {
-  PracticeCategory,
-  PracticeTopic,
-  PracticeQuestion,
-  PracticeOption,
-  PracticeTest,
-  PracticeTestQuestion,
-  PracticeAttempt,
-  PracticeAttemptAnswer,
-  User,
-  Course,
-  Enrollment
-} = models;
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
-
+const { practiceQuery } = require('../nativequery');
 const codeExecutionService = require('../services/codeExecutionService');
 
 // In-memory Rate Limiting for Run Code (Max 10 requests per minute per user)
@@ -86,7 +72,7 @@ const practiceController = {
         return res.status(400).json({ success: false, message: 'Question ID is required.' });
       }
 
-      const question = await PracticeQuestion.findByPk(questionId);
+      const question = await practiceQuery.findQuestionByIdQuery(questionId);
       if (!question) {
         return res.status(404).json({ success: false, message: 'Question not found.' });
       }
@@ -109,13 +95,11 @@ const practiceController = {
           let rawInput = tc.input !== undefined && tc.input !== null ? tc.input : (tc.inputData !== undefined && tc.inputData !== null ? tc.inputData : '');
           let rawOutput = tc.expectedOutput !== undefined && tc.expectedOutput !== null ? tc.expectedOutput : (tc.output !== undefined && tc.output !== null ? tc.output : '');
           
-          // Safety Fallback for Test Case #2 if stored input in DB is empty, 2-line, or single-line
           if (idx === 1 && (!rawInput || String(rawInput).trim() === '' || String(rawInput).includes('8 10 5 2 7 1 9') || String(rawInput).trim() === '8\n10 5 2 7 1 9 -2 3')) {
             console.log(`[PRACTICE CONTROLLER REPAIR] Intercepted invalid input for Test Case #2. Applying multiline fallback.`);
             rawInput = '8\n10 5 2 7 1 9 -2 3\n15';
             rawOutput = '4';
           }
-          // Safety Fallback for Test Case #1
           if (idx === 0 && (!rawInput || String(rawInput).trim() === '' || String(rawInput).includes('10 -2 5 3') || String(rawInput).trim() === '10\n-2 5 3 -1 2 4 -3 6 -4 1')) {
             console.log(`[PRACTICE CONTROLLER REPAIR] Intercepted invalid input for Test Case #1. Applying multiline fallback.`);
             rawInput = '10\n-2 5 3 -1 2 4 -3 6 -4 1\n7';
@@ -153,14 +137,12 @@ const practiceController = {
       });
     }
   },
+
   // ================= CATEGORIES & TOPICS =================
 
   getCategories: async (req, res) => {
     try {
-      const categories = await PracticeCategory.findAll({
-        include: [{ model: PracticeTopic, as: 'topics' }],
-        order: [['name', 'ASC']],
-      });
+      const categories = await practiceQuery.getCategoriesQuery();
       return res.status(200).json({ success: true, data: categories });
     } catch (error) {
       logger.error('GET PRACTICE CATEGORIES FAILED:', error.message);
@@ -173,7 +155,7 @@ const practiceController = {
       const { name, description } = req.body;
       if (!name) return res.status(400).json({ success: false, message: 'Category name required' });
       
-      const category = await PracticeCategory.create({ name, description });
+      const category = await practiceQuery.createCategoryQuery({ name, description });
       return res.status(201).json({ success: true, data: category });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });
@@ -185,7 +167,7 @@ const practiceController = {
       const { categoryId, name, description } = req.body;
       if (!categoryId || !name) return res.status(400).json({ success: false, message: 'Category ID & topic name required' });
       
-      const topic = await PracticeTopic.create({ categoryId, name, description });
+      const topic = await practiceQuery.createTopicQuery({ categoryId, name, description });
       return res.status(201).json({ success: true, data: topic });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });
@@ -212,17 +194,7 @@ const practiceController = {
         where.title = { [searchOp]: `%${search}%` };
       }
 
-      const questions = await PracticeQuestion.findAll({
-        where,
-        include: [
-          { model: PracticeOption, as: 'options' },
-          { model: PracticeCategory, as: 'category' },
-          { model: PracticeTopic, as: 'topic' },
-          { model: Course, as: 'course', attributes: ['id', 'courseName'] },
-        ],
-        order: [['createdAt', 'DESC']],
-      });
-
+      const questions = await practiceQuery.getQuestionsQuery(where);
       return res.status(200).json({ success: true, data: questions });
     } catch (error) {
       logger.error('GET QUESTIONS FAILED:', error.message);
@@ -256,7 +228,6 @@ const practiceController = {
         return res.status(400).json({ success: false, message: 'Question title is required' });
       }
 
-      // Explicit Scope Validation
       const targetScope = scope === 'COURSE' ? 'COURSE' : 'GLOBAL';
       const targetCourseId = targetScope === 'COURSE' ? (courseId || null) : null;
 
@@ -264,9 +235,8 @@ const practiceController = {
         return res.status(400).json({ success: false, message: 'Course selection is required for Course questions' });
       }
 
-      // Security check for instructors
       if (targetCourseId && req.user?.accountType === 'Instructor') {
-        const course = await Course.findByPk(targetCourseId);
+        const course = await practiceQuery.findCourseByIdQuery(targetCourseId);
         if (!course) {
           return res.status(404).json({ success: false, message: 'Course not found' });
         }
@@ -277,7 +247,7 @@ const practiceController = {
 
       const userRole = req.user?.accountType === 'Instructor' ? 'INSTRUCTOR' : 'ADMIN';
 
-      const question = await PracticeQuestion.create({
+      const questionData = {
         title,
         type: type || 'MCQ',
         testCategory: testCategory || 'MCQ',
@@ -296,24 +266,10 @@ const practiceController = {
         status: status || 'published',
         codingDetails: codingDetails || null,
         interviewDetails: interviewDetails || null,
-      });
+      };
 
-      // Handle MCQ / Multiple Select / True/False Options
-      if (['MCQ', 'Multiple Select', 'True/False'].includes(type || 'MCQ') && Array.isArray(options)) {
-        const optionRecords = options.map((opt) => ({
-          questionId: question.id,
-          optionText: opt.optionText || opt.text,
-          isCorrect: !!opt.isCorrect,
-        }));
-        await PracticeOption.bulkCreate(optionRecords);
-      }
-
-      const fullQuestion = await PracticeQuestion.findByPk(question.id, {
-        include: [
-          { model: PracticeOption, as: 'options' },
-          { model: Course, as: 'course', attributes: ['id', 'courseName'] }
-        ],
-      });
+      const optionsData = ['MCQ', 'Multiple Select', 'True/False'].includes(type || 'MCQ') && Array.isArray(options) ? options : [];
+      const fullQuestion = await practiceQuery.createQuestionQuery(questionData, optionsData);
 
       return res.status(201).json({ success: true, data: fullQuestion });
     } catch (error) {
@@ -325,7 +281,7 @@ const practiceController = {
   updateQuestion: async (req, res) => {
     try {
       const { id } = req.params;
-      const question = await PracticeQuestion.findByPk(id);
+      const question = await practiceQuery.findQuestionByIdQuery(id);
       if (!question) return res.status(404).json({ success: false, message: 'Question not found' });
 
       const { options, scope, courseId, ...updateData } = req.body;
@@ -342,24 +298,8 @@ const practiceController = {
         updateData.courseId = courseId;
       }
 
-      await question.update(updateData);
-
-      if (['MCQ', 'Multiple Select', 'True/False'].includes(question.type) && Array.isArray(options)) {
-        await PracticeOption.destroy({ where: { questionId: id } });
-        const optionRecords = options.map((opt) => ({
-          questionId: question.id,
-          optionText: opt.optionText || opt.text,
-          isCorrect: !!opt.isCorrect,
-        }));
-        await PracticeOption.bulkCreate(optionRecords);
-      }
-
-      const updatedFull = await PracticeQuestion.findByPk(id, {
-        include: [
-          { model: PracticeOption, as: 'options' },
-          { model: Course, as: 'course', attributes: ['id', 'courseName'] }
-        ],
-      });
+      const optionsData = ['MCQ', 'Multiple Select', 'True/False'].includes(question.type) && Array.isArray(options) ? options : undefined;
+      const updatedFull = await practiceQuery.updateQuestionQuery(id, updateData, optionsData);
 
       return res.status(200).json({ success: true, data: updatedFull });
     } catch (error) {
@@ -370,7 +310,7 @@ const practiceController = {
   deleteQuestion: async (req, res) => {
     try {
       const { id } = req.params;
-      await PracticeQuestion.destroy({ where: { id } });
+      await practiceQuery.deleteQuestionQuery(id);
       return res.status(200).json({ success: true, message: 'Question deleted' });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });
@@ -383,44 +323,21 @@ const practiceController = {
       if (!Array.isArray(ids) || ids.length === 0) {
         return res.status(400).json({ success: false, message: 'No question IDs provided for bulk deletion' });
       }
-      await PracticeQuestion.destroy({ where: { id: ids } });
+      await practiceQuery.bulkDeleteQuestionsQuery(ids);
       return res.status(200).json({ success: true, message: `${ids.length} question(s) deleted successfully` });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  // Bulk CSV Upload
   bulkUploadQuestions: async (req, res) => {
     try {
-      const { questions } = req.body; // Expect array of question objects parsed from CSV
+      const { questions } = req.body;
       if (!Array.isArray(questions) || questions.length === 0) {
         return res.status(400).json({ success: false, message: 'No questions provided' });
       }
 
-      let createdCount = 0;
-      for (const q of questions) {
-        const createdQ = await PracticeQuestion.create({
-          title: q.title || q.question,
-          type: q.type || 'MCQ',
-          difficulty: q.difficulty || 'Easy',
-          explanation: q.explanation || '',
-          marks: q.marks || 1,
-          negativeMarks: q.negativeMarks || 0,
-          status: 'published',
-        });
-
-        if (q.options && Array.isArray(q.options)) {
-          const opts = q.options.map(opt => ({
-            questionId: createdQ.id,
-            optionText: opt.text || opt.optionText,
-            isCorrect: !!opt.isCorrect
-          }));
-          await PracticeOption.bulkCreate(opts);
-        }
-        createdCount++;
-      }
-
+      const createdCount = await practiceQuery.bulkUploadQuestionsQuery(questions);
       return res.status(200).json({ success: true, message: `Successfully imported ${createdCount} questions` });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });
@@ -440,25 +357,7 @@ const practiceController = {
       if (scope) where.scope = scope;
       if (courseId) where.courseId = Number(courseId);
 
-      const include = [];
-      if (PracticeCategory) {
-        include.push({ model: PracticeCategory, as: 'category', required: false });
-      }
-      if (PracticeTopic) {
-        include.push({ model: PracticeTopic, as: 'topic', required: false });
-      }
-      if (PracticeQuestion) {
-        include.push({ model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] }, required: false });
-      }
-      if (Course) {
-        include.push({ model: Course, as: 'course', attributes: ['id', 'courseName'], required: false });
-      }
-
-      const tests = await PracticeTest.findAll({
-        where,
-        include,
-        order: [['createdAt', 'DESC']],
-      });
+      const tests = await practiceQuery.getTestsQuery(where);
       return res.status(200).json({ success: true, data: tests });
     } catch (error) {
       logger.error('GET TESTS ERROR:', error.message);
@@ -494,7 +393,7 @@ const practiceController = {
       const targetScope = req.body.scope || (courseId ? 'COURSE' : 'GLOBAL');
       const targetCourseId = targetScope === 'COURSE' ? courseId : null;
 
-      const test = await PracticeTest.create({
+      const testData = {
         title,
         description,
         testType,
@@ -512,32 +411,9 @@ const practiceController = {
         randomizeOptions: randomizeOptions !== undefined ? randomizeOptions : true,
         allowReattempt: allowReattempt !== undefined ? allowReattempt : true,
         status: status || 'published',
-      });
+      };
 
-      if (Array.isArray(questionIds) && questionIds.length > 0) {
-        const numericQIds = questionIds.map(id => Number(id));
-        const validQuestions = await PracticeQuestion.findAll({
-          where: { id: { [Op.in]: numericQIds } },
-          attributes: ['id']
-        });
-        const validQIdSet = new Set(validQuestions.map(q => q.id));
-
-        const testQuestions = numericQIds
-          .filter(qId => validQIdSet.has(qId))
-          .map((qId, idx) => ({
-            testId: test.id,
-            questionId: qId,
-            order: idx + 1,
-          }));
-
-        if (testQuestions.length > 0) {
-          await PracticeTestQuestion.bulkCreate(testQuestions);
-        }
-      }
-
-      const fullTest = await PracticeTest.findByPk(test.id, {
-        include: [{ model: PracticeQuestion, as: 'questions' }]
-      });
+      const fullTest = await practiceQuery.createTestQuery(testData, questionIds);
 
       return res.status(201).json({ success: true, data: fullTest });
     } catch (error) {
@@ -549,12 +425,11 @@ const practiceController = {
   updateTest: async (req, res) => {
     try {
       const { id } = req.params;
-      const test = await PracticeTest.findByPk(id);
+      const test = await practiceQuery.findTestByIdQuery(id);
       if (!test) {
         return res.status(404).json({ success: false, message: 'Test not found' });
       }
 
-      // Security check for instructors
       if (req.user?.accountType === 'Instructor' && Number(test.createdBy) !== Number(req.user.id)) {
         return res.status(403).json({ success: false, message: 'Forbidden: You do not own this test' });
       }
@@ -581,7 +456,7 @@ const practiceController = {
       const targetScope = scope || test.scope;
       const targetCourseId = targetScope === 'COURSE' ? (courseId || test.courseId) : null;
 
-      await test.update({
+      const updateData = {
         title: title !== undefined ? title : test.title,
         description: description !== undefined ? description : test.description,
         testType: testType !== undefined ? testType : test.testType,
@@ -597,37 +472,9 @@ const practiceController = {
         randomizeOptions: randomizeOptions !== undefined ? randomizeOptions : test.randomizeOptions,
         allowReattempt: allowReattempt !== undefined ? allowReattempt : test.allowReattempt,
         status: status !== undefined ? status : test.status,
-      });
+      };
 
-      if (Array.isArray(questionIds)) {
-        await PracticeTestQuestion.destroy({ where: { testId: id } });
-
-        const numericQIds = questionIds.map(qId => Number(qId));
-        const validQuestions = await PracticeQuestion.findAll({
-          where: { id: { [Op.in]: numericQIds } },
-          attributes: ['id']
-        });
-        const validQIdSet = new Set(validQuestions.map(q => q.id));
-
-        const testQuestions = numericQIds
-          .filter(qId => validQIdSet.has(qId))
-          .map((qId, idx) => ({
-            testId: test.id,
-            questionId: qId,
-            order: idx + 1,
-          }));
-
-        if (testQuestions.length > 0) {
-          await PracticeTestQuestion.bulkCreate(testQuestions);
-        }
-      }
-
-      const updatedFull = await PracticeTest.findByPk(id, {
-        include: [
-          { model: Course, as: 'course', attributes: ['id', 'courseName'] },
-          { model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] } }
-        ]
-      });
+      const updatedFull = await practiceQuery.updateTestQuery(id, updateData, questionIds);
 
       return res.status(200).json({
         success: true,
@@ -643,7 +490,7 @@ const practiceController = {
   deleteTest: async (req, res) => {
     try {
       const { id } = req.params;
-      await PracticeTest.destroy({ where: { id } });
+      await practiceQuery.deleteTestQuery(id);
       return res.status(200).json({ success: true, message: 'Test deleted' });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });
@@ -657,9 +504,7 @@ const practiceController = {
         return res.status(400).json({ success: false, message: 'No test IDs provided for deletion.' });
       }
       const numericIds = testIds.map(id => Number(id));
-      const deletedCount = await PracticeTest.destroy({
-        where: { id: { [Op.in]: numericIds } }
-      });
+      const deletedCount = await practiceQuery.bulkDeleteTestsQuery(numericIds);
       return res.status(200).json({
         success: true,
         message: `${deletedCount} test(s) deleted successfully.`,
@@ -673,37 +518,20 @@ const practiceController = {
 
   // ================= STUDENT PRACTICE CENTER =================
 
-  // Overview stats & cards data
   getPracticeOverview: async (req, res) => {
     try {
-      const [
-        dailyQuizCount,
-        topicPracticeCount,
-        courseTestCount,
-        mockTestCount,
-        codingCount,
-        interviewCount,
-        userAttemptsCount
-      ] = await Promise.all([
-        PracticeTest.count({ where: { testType: 'Daily Quiz', status: 'published', scope: 'GLOBAL' } }),
-        PracticeQuestion.count({ where: { status: 'published', scope: 'GLOBAL', categoryId: { [Op.ne]: null } } }),
-        PracticeTest.count({ where: { testType: 'Course Test', status: 'published', scope: 'GLOBAL' } }),
-        PracticeTest.count({ where: { testType: 'Mock Test', status: 'published', scope: 'GLOBAL' } }),
-        PracticeQuestion.count({ where: { type: 'Coding', status: 'published', scope: 'GLOBAL' } }),
-        PracticeQuestion.count({ where: { type: 'Interview', status: 'published', scope: 'GLOBAL' } }),
-        PracticeAttempt.count({ where: { userId: req.user.id } }),
-      ]);
+      const stats = await practiceQuery.getPracticeDashboardStatsQuery(req.user.id);
 
       return res.status(200).json({
         success: true,
         data: {
-          dailyQuizCount: dailyQuizCount || 0,
-          topicPracticeCount: topicPracticeCount || 0,
-          courseTestCount: courseTestCount || 0,
-          mockTestCount: mockTestCount || 0,
-          codingCount: codingCount || 0,
-          interviewCount: interviewCount || 0,
-          userAttemptsCount: userAttemptsCount || 0,
+          dailyQuizCount: stats.dailyQuizzesCount,
+          topicPracticeCount: stats.topicTestsCount,
+          courseTestCount: stats.subjectTestsCount,
+          mockTestCount: stats.mockTestsCount,
+          codingCount: stats.codingCount,
+          interviewCount: stats.interviewCount,
+          userAttemptsCount: stats.attemptsCount
         }
       });
     } catch (error) {
@@ -712,48 +540,15 @@ const practiceController = {
     }
   },
 
-  // Fetch Daily Quiz (Dynamic questions)
   getDailyQuiz: async (req, res) => {
     try {
-      // Find published Daily Quiz test or dynamically fetch 5 published MCQ questions
-      let test = await PracticeTest.findOne({
-        where: { testType: 'Daily Quiz', status: 'published' },
-        include: [{
-          model: PracticeQuestion,
-          as: 'questions',
-          where: { status: 'published' },
-          include: [{ model: PracticeOption, as: 'options', attributes: ['id', 'optionText'] }]
-        }]
-      });
-
-      if (!test || !test.questions || test.questions.length === 0) {
-        // Fallback: Pick 5 published MCQs
-        const questions = await PracticeQuestion.findAll({
-          where: { type: 'MCQ', status: 'published' },
-          limit: 5,
-          include: [{ model: PracticeOption, as: 'options', attributes: ['id', 'optionText'] }],
-          order: sequelize.random()
-        });
-
-        return res.status(200).json({
-          success: true,
-          data: {
-            id: null,
-            title: 'Daily Practice Quiz',
-            duration: 10,
-            totalMarks: questions.length * 2,
-            questions: questions
-          }
-        });
-      }
-
-      return res.status(200).json({ success: true, data: test });
+      const result = await practiceQuery.getDailyQuizQuery();
+      return res.status(200).json({ success: true, data: result.data });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  // Dynamic Topic Practice Questions
   getTopicPracticeQuestions: async (req, res) => {
     try {
       const { categoryId, topicId, difficulty } = req.query;
@@ -762,11 +557,7 @@ const practiceController = {
       if (topicId) where.topicId = topicId;
       if (difficulty) where.difficulty = difficulty;
 
-      const questions = await PracticeQuestion.findAll({
-        where,
-        include: [{ model: PracticeOption, as: 'options', attributes: ['id', 'optionText'] }],
-        limit: 10
-      });
+      const questions = await practiceQuery.getTopicPracticeQuestionsQuery(where);
 
       return res.status(200).json({ success: true, data: questions });
     } catch (error) {
@@ -774,31 +565,21 @@ const practiceController = {
     }
   },
 
-  // Submit Practice Attempt
   submitAttempt: async (req, res) => {
     try {
-      const { testId, courseId, testType, answers, timeTaken } = req.body; // answers = [{ questionId, selectedOptionId, userCode, userInterviewAnswer }]
+      const { testId, courseId, testType, answers, timeTaken } = req.body;
       const userId = req.user.id;
 
       let targetTest = null;
       let allQuestions = [];
 
       if (testId) {
-        targetTest = await PracticeTest.findByPk(testId, {
-          include: [
-            {
-              model: PracticeQuestion,
-              as: 'questions',
-              include: [{ model: PracticeOption, as: 'options' }]
-            }
-          ]
-        });
+        targetTest = await practiceQuery.findTestByIdQuery(testId);
         if (targetTest && targetTest.questions) {
           allQuestions = targetTest.questions;
         }
       }
 
-      // Map submitted answers by questionId for fast lookup
       const submittedMap = {};
       if (Array.isArray(answers)) {
         answers.forEach((ans) => {
@@ -808,12 +589,9 @@ const practiceController = {
         });
       }
 
-      // If no target test loaded, fallback to submitted answers list
       if (allQuestions.length === 0 && Array.isArray(answers)) {
         for (const ans of answers) {
-          const q = await PracticeQuestion.findByPk(ans.questionId, {
-            include: [{ model: PracticeOption, as: 'options' }]
-          });
+          const q = await practiceQuery.findQuestionByIdQuery(ans.questionId);
           if (q) allQuestions.push(q);
         }
       }
@@ -858,7 +636,6 @@ const practiceController = {
             }
           }
         } else if (question.type === 'Coding') {
-          // Coding question - evaluate userCode against all test cases (visible + hidden)
           const submittedCode = userAns ? (userAns.userCode || userAns.sourceCode || null) : null;
           if (submittedCode && submittedCode.trim()) {
             const lang = userAns.language || question.codingDetails?.language || 'python';
@@ -879,7 +656,6 @@ const practiceController = {
             } else {
               isCorrect = false;
               wrongCount++;
-              // Award partial marks proportional to passed test cases
               awarded = Math.round((evalResult.scorePercentage * marks) * 100) / 100;
               score += awarded;
             }
@@ -887,7 +663,6 @@ const practiceController = {
             skippedCount++;
           }
         } else {
-          // Interview / Short Answer - submitted answer
           if (userAns && (userAns.userCode || userAns.userInterviewAnswer)) {
             isCorrect = true;
             correctCount++;
@@ -909,7 +684,6 @@ const practiceController = {
         });
       }
 
-      // Ensure totalMarks matches test.totalMarks if test specified it
       if (targetTest && targetTest.totalMarks) {
         totalMarks = targetTest.totalMarks;
       }
@@ -920,7 +694,6 @@ const practiceController = {
       const passingPct = targetTest ? (targetTest.passingPercentage || 40) : 40;
       const isPassed = percentage >= passingPct;
 
-      // Calculate strong/weak topics
       const strongTopics = [];
       const weakTopics = [];
       Object.keys(topicStats).forEach(t => {
@@ -929,7 +702,7 @@ const practiceController = {
         else weakTopics.push(t);
       });
 
-      const attempt = await PracticeAttempt.create({
+      const attemptData = {
         userId,
         testId: testId || null,
         testType: testType || (targetTest ? targetTest.testType : 'MCQ'),
@@ -948,22 +721,9 @@ const practiceController = {
           weakTopics,
           recommendedPractice: weakTopics.length > 0 ? weakTopics : ['General']
         }
-      });
+      };
 
-      // Bulk create answers
-      const answersWithAttemptId = answerRecords.map(a => ({ ...a, attemptId: attempt.id }));
-      await PracticeAttemptAnswer.bulkCreate(answersWithAttemptId);
-
-      const fullAttempt = await PracticeAttempt.findByPk(attempt.id, {
-        include: [{
-          model: PracticeAttemptAnswer,
-          as: 'answers',
-          include: [
-            { model: PracticeQuestion, as: 'question', include: [{ model: PracticeOption, as: 'options' }] },
-            { model: PracticeOption, as: 'selectedOption' }
-          ]
-        }]
-      });
+      const fullAttempt = await practiceQuery.createAttemptWithAnswersQuery(attemptData, answerRecords);
 
       const resultData = {
         ...fullAttempt.toJSON(),
@@ -983,41 +743,22 @@ const practiceController = {
     }
   },
 
-  // Student Previous Attempts
   getUserAttempts: async (req, res) => {
     try {
-      const attempts = await PracticeAttempt.findAll({
-        where: { userId: req.user.id },
-        include: [{ model: PracticeTest, as: 'test', attributes: ['title', 'testType'] }],
-        order: [['createdAt', 'DESC']],
-      });
+      const attempts = await practiceQuery.getUserAttemptsQuery(req.user.id);
       return res.status(200).json({ success: true, data: attempts });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });
     }
   },
 
-  // Single Attempt Detailed Review
   getAttemptDetails: async (req, res) => {
     try {
       const { id } = req.params;
       const { courseId, testId } = req.query;
       const userId = req.user.id;
 
-      const attempt = await PracticeAttempt.findOne({
-        where: { id, userId },
-        include: [
-          { model: PracticeTest, as: 'test' },
-          {
-            model: PracticeAttemptAnswer,
-            as: 'answers',
-            include: [
-              { model: PracticeQuestion, as: 'question', include: [{ model: PracticeOption, as: 'options' }] },
-              { model: PracticeOption, as: 'selectedOption' }
-            ]
-          }
-        ]
-      });
+      const attempt = await practiceQuery.getAttemptDetailsQuery(id, userId);
 
       if (!attempt) {
         return res.status(404).json({ success: false, message: `Attempt ${id} not found for this user.` });
@@ -1027,11 +768,8 @@ const practiceController = {
         return res.status(403).json({ success: false, message: `Access Denied: Attempt ${id} belongs to test ${attempt.testId}, not test ${testId}.` });
       }
 
-      // Check course enrollment if courseId provided
       if (courseId) {
-        const enrollment = await Enrollment.findOne({
-          where: { userId, courseId }
-        });
+        const enrollment = await practiceQuery.findEnrollmentQuery(userId, courseId);
         if (!enrollment && req.user.role !== 'Admin' && req.user.role !== 'Instructor') {
           return res.status(403).json({ success: false, message: 'Access Denied: You are not enrolled in this course.' });
         }
@@ -1045,7 +783,6 @@ const practiceController = {
 
   // ================= COURSE-SPECIFIC PRACTICE (INSTRUCTOR & ENROLLED STUDENTS) =================
 
-  // Instructor Overview & Content Listing
   getInstructorTests: async (req, res) => {
     try {
       const instructorId = req.user.id;
@@ -1053,11 +790,7 @@ const practiceController = {
 
       logger.info(`[COURSE TEST LIST] instructorId=${instructorId}, req.courseId=${courseId}, testType=${testType}`);
 
-      // Find all courses owned by instructor
-      const ownedCourses = await Course.findAll({
-        where: { [Op.or]: [{ instructorId }, { instructor_id: instructorId }] },
-        attributes: ['id']
-      });
+      const ownedCourses = await practiceQuery.findInstructorCoursesQuery(instructorId);
       const ownedCourseIds = ownedCourses.map(c => c.id);
 
       logger.info(`[COURSE TEST LIST] ownedCourseIds=[${ownedCourseIds.join(', ')}]`);
@@ -1084,14 +817,7 @@ const practiceController = {
       if (testType) where.testType = testType;
       if (status) where.status = status;
 
-      const tests = await PracticeTest.findAll({
-        where,
-        include: [
-          { model: Course, as: 'course', attributes: ['id', 'courseName'] },
-          { model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] } }
-        ],
-        order: [['createdAt', 'DESC']]
-      });
+      const tests = await practiceQuery.getInstructorTestsQuery(where);
 
       logger.info(`[COURSE TEST LIST] returnedTests count=${tests.length}`);
 
@@ -1107,10 +833,7 @@ const practiceController = {
       const instructorId = req.user.id;
       const { courseId, type, difficulty, search } = req.query;
 
-      const ownedCourses = await Course.findAll({
-        where: { [Op.or]: [{ instructorId }, { instructor_id: instructorId }] },
-        attributes: ['id']
-      });
+      const ownedCourses = await practiceQuery.findInstructorCoursesQuery(instructorId);
       const ownedCourseIds = ownedCourses.map(c => c.id);
 
       const whereConditions = [
@@ -1132,14 +855,7 @@ const practiceController = {
       if (difficulty) where.difficulty = difficulty;
       if (search) where.title = { [Op.like]: `%${search}%` };
 
-      const questions = await PracticeQuestion.findAll({
-        where,
-        include: [
-          { model: PracticeOption, as: 'options' },
-          { model: Course, as: 'course', attributes: ['id', 'courseName'] }
-        ],
-        order: [['createdAt', 'DESC']]
-      });
+      const questions = await practiceQuery.getInstructorQuestionsQuery(where);
 
       return res.status(200).json({ success: true, data: questions });
     } catch (error) {
@@ -1154,16 +870,15 @@ const practiceController = {
       const { status } = req.body;
       const instructorId = req.user.id;
 
-      const test = await PracticeTest.findByPk(id);
+      const test = await practiceQuery.findTestByIdQuery(id);
       if (!test) return res.status(404).json({ success: false, message: 'Test not found' });
 
-      // Verify ownership
       if (Number(test.createdBy) !== Number(instructorId) && req.user.accountType !== 'Admin') {
         return res.status(403).json({ success: false, message: 'Forbidden: You do not own this test' });
       }
 
-      await test.update({ status: status === 'published' ? 'published' : 'draft' });
-      return res.status(200).json({ success: true, message: `Test status updated to ${test.status}`, data: test });
+      const updated = await practiceQuery.updateTestQuery(id, { status: status === 'published' ? 'published' : 'draft' });
+      return res.status(200).json({ success: true, message: `Test status updated to ${updated.status}`, data: updated });
     } catch (error) {
       return res.status(500).json({ success: false, message: error.message });
     }
@@ -1174,21 +889,14 @@ const practiceController = {
       const instructorId = req.user.id;
       const { testId } = req.params;
 
-      const test = await PracticeTest.findByPk(testId);
+      const test = await practiceQuery.findTestByIdQuery(testId);
       if (!test) return res.status(404).json({ success: false, message: 'Test not found' });
 
       if (Number(test.createdBy) !== Number(instructorId) && req.user.accountType !== 'Admin') {
         return res.status(403).json({ success: false, message: 'Forbidden' });
       }
 
-      const attempts = await PracticeAttempt.findAll({
-        where: { testId },
-        include: [
-          { model: User, as: 'user', attributes: ['id', 'firstName', 'lastName', 'email', 'image'] },
-          { model: PracticeTest, as: 'test', attributes: ['id', 'title', 'totalMarks', 'passingPercentage'] }
-        ],
-        order: [['createdAt', 'DESC']]
-      });
+      const attempts = await practiceQuery.getTestAttemptsQuery(testId);
 
       return res.status(200).json({ success: true, data: attempts });
     } catch (error) {
@@ -1196,7 +904,6 @@ const practiceController = {
     }
   },
 
-  // Fetch tests for a specific course (Student & Enrolled)
   getCoursePractice: async (req, res) => {
     try {
       const { courseId } = req.params;
@@ -1210,17 +917,13 @@ const practiceController = {
 
       const numericCourseId = Number(courseId);
 
-      // Verify course existence
-      const course = await Course.findByPk(numericCourseId);
+      const course = await practiceQuery.findCourseByIdQuery(numericCourseId);
       if (!course) {
         return res.status(404).json({ success: false, message: 'Course not found' });
       }
 
-      // Enrollment Security Guard (Skip enrollment check for Admin/Instructor)
       if (userRole !== 'Admin' && userRole !== 'SuperAdmin' && userRole !== 'Instructor') {
-        const enrollment = await Enrollment.findOne({
-          where: { userId, courseId: numericCourseId }
-        });
+        const enrollment = await practiceQuery.findEnrollmentQuery(userId, numericCourseId);
 
         if (!enrollment) {
           return res.status(403).json({
@@ -1241,28 +944,12 @@ const practiceController = {
         whereClause.id = Number(testId);
       }
 
-      // Fetch published tests for this course
-      const tests = await PracticeTest.findAll({
-        where: whereClause,
-        include: [
-          {
-            model: PracticeQuestion,
-            as: 'questions',
-            through: { attributes: ['order'] },
-            include: [{ model: PracticeOption, as: 'options' }]
-          }
-        ],
-        order: [['createdAt', 'DESC']]
-      });
+      const tests = await practiceQuery.getCoursePracticeTestsQuery(whereClause);
 
-      // Enhance tests with student attempt stats (attemptsCount, bestScorePercentage, lastAttemptAt)
       const enhancedTests = await Promise.all(
         tests.map(async (testItem) => {
           const testData = testItem.toJSON();
-          const userAttempts = await PracticeAttempt.findAll({
-            where: { userId, testId: testItem.id },
-            order: [['createdAt', 'DESC']]
-          });
+          const userAttempts = await practiceQuery.getUserTestAttemptsQuery(userId, testItem.id);
 
           const attemptsCount = userAttempts.length;
           let bestScorePercentage = null;
@@ -1277,7 +964,6 @@ const practiceController = {
             bestScorePercentage = total > 0 ? Math.round((maxScore / total) * 100) : 0;
           }
 
-          // Security: Filter hidden test cases from student response safely
           const sanitizedQuestions = (testData.questions || []).map(q => {
             if (q.type === 'Coding') {
               const cd = parseCodingDetails(q.codingDetails);
@@ -1315,7 +1001,6 @@ const practiceController = {
     }
   },
 
-  // Instructor Create Course Practice Test with ownership verification
   createInstructorCourseTest: async (req, res) => {
     try {
       const { courseId, title, description, testType, duration, totalMarks, passingPercentage, status, questionIds } = req.body;
@@ -1329,8 +1014,7 @@ const practiceController = {
 
       const numericCourseId = Number(courseId);
 
-      // Security check: Verify course exists and is owned by logged-in instructor
-      const course = await Course.findByPk(numericCourseId);
+      const course = await practiceQuery.findCourseByIdQuery(numericCourseId);
       if (!course) {
         return res.status(404).json({ success: false, message: 'Course not found' });
       }
@@ -1343,12 +1027,11 @@ const practiceController = {
 
       const testStatus = status === 'published' ? 'published' : 'draft';
 
-      // Disallow publishing if questions are empty
       if (testStatus === 'published' && (!Array.isArray(questionIds) || questionIds.length === 0)) {
         return res.status(400).json({ success: false, message: 'At least one question is required to publish a test.' });
       }
 
-      const test = await PracticeTest.create({
+      const testData = {
         title,
         description: description || '',
         testType: testType || 'Course Test',
@@ -1361,39 +1044,12 @@ const practiceController = {
         createdBy: instructorId,
         createdByRole: 'INSTRUCTOR',
         scope: 'COURSE'
-      });
+      };
 
-      if (Array.isArray(questionIds) && questionIds.length > 0) {
-        const numericQIds = questionIds.map(id => Number(id));
-        const validQuestions = await PracticeQuestion.findAll({
-          where: { id: { [Op.in]: numericQIds } },
-          attributes: ['id']
-        });
-        const validQIdSet = new Set(validQuestions.map(q => q.id));
-
-        const testQuestions = numericQIds
-          .filter(qId => validQIdSet.has(qId))
-          .map((qId, idx) => ({
-            testId: test.id,
-            questionId: qId,
-            order: idx + 1
-          }));
-
-        if (testQuestions.length > 0) {
-          await PracticeTestQuestion.bulkCreate(testQuestions);
-        }
-      }
-
-      // Query database using the returned test ID and verify record actually exists
-      const fullTest = await PracticeTest.findByPk(test.id, {
-        include: [
-          { model: Course, as: 'course', attributes: ['id', 'courseName'] },
-          { model: PracticeQuestion, as: 'questions', through: { attributes: ['order'] } }
-        ]
-      });
+      const fullTest = await practiceQuery.createTestQuery(testData, questionIds);
 
       if (!fullTest) {
-        logger.error(`[COURSE TEST DB VERIFY FAILED] testId=${test.id}`);
+        logger.error(`[COURSE TEST DB VERIFY FAILED] test creation failed`);
         return res.status(500).json({ success: false, message: 'Database persistence failed: Created test could not be retrieved.' });
       }
 

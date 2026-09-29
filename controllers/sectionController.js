@@ -1,10 +1,4 @@
-const {
-  Course,
-  Section,
-  SubSection,
-  CourseProgress,
-  CourseProgressVideo
-} = require('../models');
+const { sectionQuery, courseQuery } = require('../nativequery');
 const courseService = require('../services/courseService');
 const uploadService = require('../services/uploadService');
 const accessControlService = require('../services/accessControlService');
@@ -18,7 +12,7 @@ const sectionController = {
     try {
       const { sectionName, courseId } = req.body;
 
-      const course = await Course.findByPk(courseId);
+      const course = await courseQuery.findCourseByIdQuery(courseId);
 
       if (!course) {
         return res.status(404).json({
@@ -27,20 +21,12 @@ const sectionController = {
         });
       }
 
-      const section = await Section.create({
+      await sectionQuery.createSectionQuery({
         sectionName,
         courseId
       });
 
-      const updatedCourse = await Course.findByPk(courseId, {
-        include: [
-          {
-            association: 'sections',
-            include: [{ association: 'subSections' }]
-          }
-        ]
-      });
-
+      const updatedCourse = await courseQuery.findCourseDetailsByIdQuery(courseId);
       const formattedCourse = await courseService.formatCourse(updatedCourse);
 
       return res.status(201).json({
@@ -64,7 +50,7 @@ const sectionController = {
     try {
       const { sectionName, sectionId, courseId } = req.body;
 
-      const section = await Section.findByPk(sectionId);
+      const section = await sectionQuery.findSectionByIdQuery(sectionId);
 
       if (!section) {
         return res.status(404).json({
@@ -73,17 +59,9 @@ const sectionController = {
         });
       }
 
-      await section.update({ sectionName });
+      await sectionQuery.updateSectionQuery({ sectionId, sectionName });
 
-      const course = await Course.findByPk(courseId, {
-        include: [
-          {
-            association: 'sections',
-            include: [{ association: 'subSections' }]
-          }
-        ]
-      });
-
+      const course = await courseQuery.findCourseDetailsByIdQuery(courseId);
       const formattedCourse = await courseService.formatCourse(course);
 
       return res.status(200).json({
@@ -107,7 +85,7 @@ const sectionController = {
     try {
       const { sectionId, courseId } = req.body;
 
-      const section = await Section.findByPk(sectionId);
+      const section = await sectionQuery.findSectionByIdQuery(sectionId);
 
       if (!section) {
         return res.status(404).json({
@@ -116,17 +94,9 @@ const sectionController = {
         });
       }
 
-      await section.destroy();
+      await sectionQuery.deleteSectionQuery(sectionId);
 
-      const course = await Course.findByPk(courseId, {
-        include: [
-          {
-            association: 'sections',
-            include: [{ association: 'subSections' }]
-          }
-        ]
-      });
-
+      const course = await courseQuery.findCourseDetailsByIdQuery(courseId);
       const formattedCourse = await courseService.formatCourse(course);
 
       return res.status(200).json({
@@ -150,7 +120,7 @@ const sectionController = {
     try {
       const { sectionId, title, description, duration } = req.body;
 
-      const section = await Section.findByPk(sectionId);
+      const section = await sectionQuery.findSectionByIdQuery(sectionId);
 
       if (!section) {
         return res.status(404).json({
@@ -160,13 +130,11 @@ const sectionController = {
       }
 
       let videoUrl = null;
-
-      // Handle video upload
       if (req.file) {
         videoUrl = await uploadService.handleFileUpload(req.file, true);
       }
 
-      const subSection = await SubSection.create({
+      await sectionQuery.createSubSectionQuery({
         title,
         description,
         duration: parseInt(duration) || 0,
@@ -174,15 +142,7 @@ const sectionController = {
         sectionId
       });
 
-      const updatedCourse = await Course.findByPk(section.courseId, {
-        include: [
-          {
-            association: 'sections',
-            include: [{ association: 'subSections' }]
-          }
-        ]
-      });
-
+      const updatedCourse = await courseQuery.findCourseDetailsByIdQuery(section.courseId);
       const formattedCourse = await courseService.formatCourse(updatedCourse);
 
       return res.status(201).json({
@@ -206,7 +166,7 @@ const sectionController = {
     try {
       const { subSectionId, title, description, duration } = req.body;
 
-      const subSection = await SubSection.findByPk(subSectionId);
+      const subSection = await sectionQuery.findSubSectionByIdQuery(subSectionId);
 
       if (!subSection) {
         return res.status(404).json({
@@ -220,24 +180,15 @@ const sectionController = {
       if (description) updateData.description = description;
       if (duration !== undefined) updateData.duration = parseInt(duration) || 0;
 
-      // Handle video upload
       if (req.file) {
         const videoUrl = await uploadService.handleFileUpload(req.file, true);
         updateData.videoUrl = videoUrl;
       }
 
-      await subSection.update(updateData);
+      await sectionQuery.updateSubSectionQuery(subSectionId, updateData);
 
-      const section = await Section.findByPk(subSection.sectionId);
-      const course = await Course.findByPk(section.courseId, {
-        include: [
-          {
-            association: 'sections',
-            include: [{ association: 'subSections' }]
-          }
-        ]
-      });
-
+      const section = await sectionQuery.findSectionByIdQuery(subSection.sectionId);
+      const course = await courseQuery.findCourseDetailsByIdQuery(section.courseId);
       const formattedCourse = await courseService.formatCourse(course);
 
       return res.status(200).json({
@@ -261,7 +212,7 @@ const sectionController = {
     try {
       const { subSectionId, sectionId } = req.body;
 
-      const subSection = await SubSection.findByPk(subSectionId);
+      const subSection = await sectionQuery.findSubSectionByIdQuery(subSectionId);
 
       if (!subSection) {
         return res.status(404).json({
@@ -270,18 +221,10 @@ const sectionController = {
         });
       }
 
-      await subSection.destroy();
+      await sectionQuery.deleteSubSectionQuery(subSectionId);
 
-      const section = await Section.findByPk(sectionId);
-      const course = await Course.findByPk(section.courseId, {
-        include: [
-          {
-            association: 'sections',
-            include: [{ association: 'subSections' }]
-          }
-        ]
-      });
-
+      const section = await sectionQuery.findSectionByIdQuery(sectionId);
+      const course = await courseQuery.findCourseDetailsByIdQuery(section.courseId);
       const formattedCourse = await courseService.formatCourse(course);
 
       return res.status(200).json({
@@ -314,7 +257,6 @@ const sectionController = {
 
       const userId = req.user.id;
 
-      // Enforce backend access control before allowing video progress update
       const accessCheck = await accessControlService.canAccessVideo(userId, courseId, subSectionId);
       if (!accessCheck.allowed) {
         return res.status(403).json({
@@ -323,24 +265,9 @@ const sectionController = {
         });
       }
 
-      let progress = await CourseProgress.findOne({
-        where: { userId, courseId }
-      });
+      const progress = await sectionQuery.findOrCreateCourseProgressQuery(userId, courseId);
 
-      if (!progress) {
-        progress = await CourseProgress.create({
-          userId,
-          courseId
-        });
-      }
-
-      // Check if video already marked as completed
-      const completedVideo = await CourseProgressVideo.findOne({
-        where: {
-          courseProgressId: progress.id,
-          subSectionId
-        }
-      });
+      const completedVideo = await sectionQuery.findCompletedVideoQuery(progress.id, subSectionId);
 
       if (completedVideo) {
         return res.status(200).json({
@@ -349,10 +276,7 @@ const sectionController = {
         });
       }
 
-      await CourseProgressVideo.create({
-        courseProgressId: progress.id,
-        subSectionId
-      });
+      await sectionQuery.markVideoCompletedQuery(progress.id, subSectionId);
 
       return res.status(200).json({
         success: true,

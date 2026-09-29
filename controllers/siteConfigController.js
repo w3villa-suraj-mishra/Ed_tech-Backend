@@ -1,24 +1,36 @@
-const { SiteConfig } = require('../models');
+const { siteConfigQuery } = require('../nativequery');
 
-exports.getConfigByKey = async (req, res) => {
+const getSiteConfig = async (req, res) => {
+  try {
+    const config = await siteConfigQuery.getSiteConfigQuery();
+    return res.status(200).json({ success: true, data: config });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const getConfigByKey = async (req, res) => {
   try {
     const { key } = req.params;
-    const config = await SiteConfig.findOne({ where: { key } });
-    if (!config) {
-      return res.status(404).json({ success: false, message: `Config for key ${key} not found.` });
-    }
-    
-    // Parse if JSON, otherwise return as string
-    let parsedValue = config.value;
-    try {
-      parsedValue = JSON.parse(config.value);
-    } catch (e) {
-      // Not JSON, return raw string
-    }
-
-    return res.status(200).json({ success: true, data: parsedValue });
+    const config = await siteConfigQuery.getSiteConfigQuery();
+    const val = config && config[key] !== undefined ? config[key] : null;
+    return res.status(200).json({ success: true, data: val });
   } catch (error) {
-    console.error('Error fetching site config:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+    return res.status(500).json({ success: false, message: error.message });
   }
+};
+
+const updateSiteConfig = async (req, res) => {
+  try {
+    const config = await siteConfigQuery.updateSiteConfigQuery(req.body);
+    return res.status(200).json({ success: true, data: config });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+module.exports = {
+  getSiteConfig,
+  getConfigByKey,
+  updateSiteConfig
 };

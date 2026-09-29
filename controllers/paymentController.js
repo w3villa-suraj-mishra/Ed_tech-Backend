@@ -1,6 +1,4 @@
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder_key_for_build';
-const stripe = require('stripe')(stripeSecretKey);
-const { Enrollment, Course } = require('../models');
+const { paymentQuery } = require('../nativequery');
 const { PLAN_TYPES, PLAN_CONFIG, calculatePlanPrice } = require('../config/plans');
 const { calculateCoursePrice } = require('../services/pricingService');
 const logger = require('../utils/logger');
@@ -17,9 +15,7 @@ const createPaymentOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No courses provided' });
     }
 
-    const courseDetails = await Promise.all(
-      courses.map(id => Course.findByPk(typeof id === 'object' ? id.id || id._id : id))
-    );
+    const courseDetails = await paymentQuery.findCoursesByIdsQuery(courses);
 
     const validCourses = courseDetails.filter(c => c !== null);
     if (validCourses.length === 0) {
@@ -30,9 +26,7 @@ const createPaymentOrder = async (req, res) => {
 
     // Backend validation: Check existing enrollment plan for every requested course
     for (const course of validCourses) {
-      const existingEnrollment = await Enrollment.findOne({
-        where: { userId, courseId: course.id }
-      });
+      const existingEnrollment = await paymentQuery.findEnrollmentQuery(userId, course.id);
 
       if (existingEnrollment) {
         const isSilverExpired = existingEnrollment.plan === 'silver' && existingEnrollment.expiresAt && new Date(existingEnrollment.expiresAt) <= new Date();
@@ -57,25 +51,11 @@ const createPaymentOrder = async (req, res) => {
     if (targetPlan === PLAN_TYPES.FREE) {
       const enrollments = await Promise.all(
         validCourses.map(async (course) => {
-          const [enrollment] = await Enrollment.findOrCreate({
-            where: { userId, courseId: course.id },
-            defaults: {
-              userId,
-              courseId: course.id,
-              plan: PLAN_TYPES.FREE,
-              status: 'active',
-              coursePrice: Number(course.price || 0),
-              purchasePrice: 0,
-              discountPercentage: 0,
-              activatedAt: new Date(),
-              expiresAt: null,
-              paymentReference: 'FREE_ACCESS'
-            }
-          });
+          const enrollment = await paymentQuery.findOrCreateFreeEnrollmentQuery(userId, course);
           // Send confirmation email for free access
           const mailService = require('../services/mailService');
           mailService.sendCoursePurchaseConfirmation({
-            enrollmentId: enrollment.id,
+            enrollmentId: enrollment ? enrollment.id : null,
             userId,
             courseId: course.id
           }).catch(err => {
@@ -101,12 +81,8 @@ const createPaymentOrder = async (req, res) => {
 
     if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
       const normalizedCode = couponCode.trim().toUpperCase();
-      const { Offer, OfferRedemption } = require('../models');
       try {
-        const offer = await Offer.findOne({
-          where: { code: normalizedCode },
-          include: [{ model: Course, as: 'courses', attributes: ['id'] }]
-        });
+        const offer = await paymentQuery.findOfferByCodeAndValidateQuery(normalizedCode);
 
         if (offer && offer.status !== 'DISABLED' && offer.status !== 'DRAFT') {
           const now = new Date();
@@ -114,21 +90,18 @@ const createPaymentOrder = async (req, res) => {
           const endAt = new Date(offer.endAt);
 
           if (now >= startAt && now <= endAt) {
-            // Check scope
             let isEligible = true;
             if (offer.scope === 'SELECTED_COURSES') {
               const eligibleIds = offer.courses ? offer.courses.map(c => c.id) : [];
               isEligible = validCourses.every(c => eligibleIds.includes(c.id));
             }
 
-            // Check max total uses
             if (offer.maxUses !== null && offer.totalUses >= offer.maxUses) {
               isEligible = false;
             }
 
-            // Check user max uses
             if (userId) {
-              const userCount = await OfferRedemption.count({ where: { offerId: offer.id, userId } });
+              const userCount = await paymentQuery.getOfferUserRedemptionCountQuery(offer.id, userId);
               const maxPerUser = offer.maxUsesPerUser !== null ? offer.maxUsesPerUser : 1;
               if (userCount >= maxPerUser) {
                 isEligible = false;
@@ -144,7 +117,6 @@ const createPaymentOrder = async (req, res) => {
         logger.warn(`Offer lookup skipped or table unavailable: ${offerErr.message}`);
       }
 
-      // Fallback: Check Announcement promo code or standard promotional codes (e.g. GANDHI30)
       if (!validatedOffer) {
         let promoDiscount = 0;
         if (normalizedCode === 'GANDHI30' || normalizedCode === 'GANDHI') {
@@ -161,8 +133,7 @@ const createPaymentOrder = async (req, res) => {
           promoDiscount = 50;
         } else {
           try {
-            const { Announcement } = require('../models');
-            const ann = await Announcement.findOne({ where: { highlightText: normalizedCode, status: 'ACTIVE' } });
+            const ann = await paymentQuery.findAnnouncementHighlightQuery(normalizedCode);
             if (ann) {
               const match = (ann.message || '').match(/(\d+)%/);
               promoDiscount = match ? parseInt(match[1], 10) : 30;
@@ -307,7 +278,7 @@ const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, 
       const parsedCourseId = typeof cId === 'object' ? cId.id || cId._id : cId;
       if (!parsedCourseId) return;
 
-      const course = await Course.findByPk(parsedCourseId);
+      const course = await paymentQuery.findCourseByIdQuery(parsedCourseId);
       if (!course) return;
 
       const pricing = calculateCoursePrice(course);
@@ -315,9 +286,8 @@ const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, 
       let discountAmountRecorded = 0;
 
       // Handle Coupon Redemption if offerId present
-      const { Offer, OfferRedemption, sequelize } = require('../models');
       if (offerId) {
-        const offer = await Offer.findByPk(offerId);
+        const offer = await paymentQuery.findOfferByIdQuery(offerId);
         if (offer) {
           if (offer.discountType === 'PERCENTAGE') {
             discountAmountRecorded = Math.round((purchasePrice * offer.discountValue) / 100);
@@ -327,23 +297,14 @@ const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, 
             purchasePrice = Math.max(0, purchasePrice - discountAmountRecorded);
           }
 
-          // Record Redemption & Increment totalUses atomically / safely
-          try {
-            await OfferRedemption.findOrCreate({
-              where: { offerId: offer.id, userId, courseId: parsedCourseId },
-              defaults: {
-                offerId: offer.id,
-                userId,
-                courseId: parsedCourseId,
-                plan: dbPlan,
-                orderId: paymentRef || 'DIRECT',
-                discountAmount: discountAmountRecorded
-              }
-            });
-            await offer.increment('totalUses', { by: 1 });
-          } catch (redemptionErr) {
-            logger.warn(`Offer redemption already recorded or concurrent duplicate prevented: ${redemptionErr.message}`);
-          }
+          await paymentQuery.recordOfferRedemptionHelperQuery({
+            offer,
+            userId,
+            courseId: parsedCourseId,
+            plan: dbPlan,
+            orderId: paymentRef || 'DIRECT',
+            discountAmount: discountAmountRecorded
+          });
         }
       }
 
@@ -362,36 +323,17 @@ const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, 
         expiresAt.setFullYear(expiresAt.getFullYear() + 2);
       }
 
-      const existingEnrollment = await Enrollment.findOne({
-        where: { userId, courseId: parsedCourseId }
+      const enrollmentRecord = await paymentQuery.upsertEnrollmentQuery({
+        userId,
+        courseId: parsedCourseId,
+        plan: dbPlan,
+        pricing,
+        purchasePrice,
+        discountPercentage,
+        activatedAt,
+        expiresAt,
+        paymentReference: paymentRef
       });
-
-      let enrollmentRecord = null;
-      if (existingEnrollment) {
-        enrollmentRecord = await existingEnrollment.update({
-          plan: dbPlan,
-          status: 'active',
-          coursePrice: pricing.originalPrice,
-          purchasePrice,
-          discountPercentage,
-          activatedAt,
-          expiresAt,
-          paymentReference: paymentRef || existingEnrollment.paymentReference
-        });
-      } else {
-        enrollmentRecord = await Enrollment.create({
-          userId,
-          courseId: parsedCourseId,
-          plan: dbPlan,
-          status: 'active',
-          coursePrice: pricing.originalPrice,
-          purchasePrice,
-          discountPercentage,
-          activatedAt,
-          expiresAt,
-          paymentReference: paymentRef || 'STRIPE_PAYMENT'
-        });
-      }
 
       // Automatically send dynamic course purchase confirmation email
       const mailService = require('../services/mailService');

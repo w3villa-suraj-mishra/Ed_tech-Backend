@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
-const { User } = require('../models');
+const { authQuery } = require('../nativequery');
 const helpers = require('../utils/helpers');
 const logger = require('../utils/logger');
 
@@ -68,9 +68,7 @@ const sessionsController = {
 
       // Find or create user
       logger.info(`${logPrefix} 5] User lookup started for email: ${email}`);
-      let user = await User.findOne({
-        where: { email }
-      });
+      let user = await authQuery.findSocialUserQuery(email);
 
       if (user) {
         logger.info(`${logPrefix} 6] Existing user found (ID: ${user.id}, stored accountType: ${user.accountType})`);
@@ -122,7 +120,7 @@ const sessionsController = {
         userData.image = safePhoto;
 
         try {
-          user = await User.create(userData);
+          user = await authQuery.createSocialUserQuery(userData);
           logger.info(`${logPrefix} 7] User created successfully (ID: ${user.id}, accountType: ${user.accountType})`);
         } catch (createErr) {
           logger.error(`${logPrefix} CREATE ERROR] User.create failed for ${email}: ${createErr.message}`, {

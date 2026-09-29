@@ -61,9 +61,10 @@ LiveChatMessage.belongsTo(User, { foreignKey: 'userId' });
 
 // Course associations
 Category.hasMany(Course, { foreignKey: 'categoryId', onDelete: 'CASCADE' });
-Course.belongsTo(Category, { foreignKey: 'categoryId' });
+Course.belongsTo(Category, { foreignKey: 'categoryId', as: 'category' });
 
 Course.hasMany(Section, { foreignKey: 'courseId', as: 'sections', onDelete: 'CASCADE' });
+Course.hasMany(Section, { foreignKey: 'courseId', as: 'courseContent', onDelete: 'CASCADE' });
 Section.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
 
 Course.hasMany(Enrollment, { foreignKey: 'courseId', as: 'enrollments', onDelete: 'CASCADE' });

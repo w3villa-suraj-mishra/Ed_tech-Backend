@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { User, Otp } = require('../models');
+const { authQuery } = require('../nativequery');
 const mailService = require('../services/mailService');
 const helpers = require('../utils/helpers');
 const logger = require('../utils/logger');
@@ -36,9 +36,7 @@ const authController = {
       }
 
       // Check if user already exists
-      const existingUser = await User.findOne({
-        where: { email, accountType }
-      });
+      const existingUser = await authQuery.findUserByEmailQuery(email, accountType);
 
       if (existingUser) {
         return res.status(422).json({
@@ -48,9 +46,7 @@ const authController = {
       }
 
       // Check if OTP was verified
-      const otp = await Otp.findOne({
-        where: { email, verified: true }
-      });
+      const otp = await authQuery.findVerifiedOtpQuery(email);
 
       if (!otp) {
         return res.status(403).json({
@@ -59,8 +55,8 @@ const authController = {
         });
       }
 
-      // Create user
-      const user = await User.create({
+      // Create user via query layer
+      await authQuery.createUserQuery({
         firstName,
         lastName,
         email,
@@ -71,7 +67,7 @@ const authController = {
       });
 
       // Delete OTP after successful signup
-      await otp.destroy();
+      await authQuery.destroyOtpQuery(otp);
 
       return res.status(201).json({
         success: true,
@@ -98,18 +94,7 @@ const authController = {
         return res.status(400).json({ success: false, message: 'accountType is required' });
       }
 
-      let user = await User.findOne({
-        where: { email, accountType },
-        include: ['profile']
-      });
-
-      if (!user) {
-        // Fallback: check if user exists under email regardless of tab role
-        user = await User.findOne({
-          where: { email },
-          include: ['profile']
-        });
-      }
+      const user = await authQuery.findUserForLoginQuery(email, accountType);
 
       if (!user || !user.authenticate(password)) {
         return res.status(401).json({
@@ -168,10 +153,7 @@ const authController = {
         return res.status(400).json({ success: false, message: 'accountType is required' });
       }
 
-      // Check if user already exists
-      const userExists = await User.findOne({
-        where: { email, accountType }
-      });
+      const userExists = await authQuery.findUserByEmailQuery(email, accountType);
 
       if (userExists) {
         return res.status(409).json({
@@ -180,23 +162,16 @@ const authController = {
         });
       }
 
-      // Delete any existing OTPs for this email
-      await Otp.destroy({
-        where: { email }
-      });
+      await authQuery.deleteOtpForEmailQuery(email);
 
-      // Generate 6-digit OTP
       const code = helpers.generateOTP();
 
-      // Create OTP record
-      await Otp.create({
+      await authQuery.createOtpRecordQuery({
         email,
-        code: String(code).trim(),
-        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
-        verified: false
+        code,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000)
       });
 
-      // Send OTP via email
       await mailService.sendOTP(email, code);
 
       return res.status(200).json({
@@ -235,13 +210,7 @@ const authController = {
         });
       }
 
-      const otpRecord = await Otp.findOne({
-        where: {
-          email,
-          code: cleanCode
-        },
-        order: [['createdAt', 'DESC']]
-      });
+      const otpRecord = await authQuery.findOtpByEmailAndCodeQuery(email, cleanCode);
 
       if (!otpRecord) {
         return res.status(422).json({
@@ -257,17 +226,15 @@ const authController = {
         });
       }
 
-      // Check if OTP has expired
       if (new Date() > new Date(otpRecord.expiresAt)) {
-        await otpRecord.destroy();
+        await authQuery.destroyOtpQuery(otpRecord);
         return res.status(422).json({
           success: false,
           message: 'This verification code has expired. Please request a new code.'
         });
       }
 
-      // Mark OTP as verified
-      await otpRecord.update({ verified: true });
+      await authQuery.updateOtpVerifiedQuery(otpRecord);
 
       return res.status(200).json({
         success: true,
@@ -310,7 +277,7 @@ const authController = {
 
       const token = header.split(' ').pop();
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'Secret123');
-      const user = await User.findByPk(decoded.user_id || decoded.userId);
+      const user = await authQuery.findUserByIdQuery(decoded.user_id || decoded.userId);
       if (!user) {
         return res.status(401).json({ success: false, message: 'User not found' });
       }
@@ -323,9 +290,7 @@ const authController = {
         return res.status(400).json({ success: false, message: 'Passwords do not match' });
       }
 
-      user.password = newPassword;
-      user.passwordConfirmation = confirmPassword;
-      await user.save();
+      await authQuery.updateUserPasswordQuery(user, newPassword, confirmPassword);
 
       return res.status(200).json({ success: true, message: 'Password changed successfully' });
     } catch (error) {

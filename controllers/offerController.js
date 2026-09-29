@@ -1,5 +1,4 @@
-const { Offer, OfferCourse, Course, User } = require('../models');
-const { Op } = require('sequelize');
+const { offerQuery, courseQuery } = require('../nativequery');
 
 // Helper to determine active/scheduled/expired status dynamically based on current time & timestamps
 function calculateOfferStatus(offer) {
@@ -21,7 +20,7 @@ function calculateOfferStatus(offer) {
 
 // Format single offer response
 function formatOfferResponse(offer) {
-  const plain = offer.get({ plain: true });
+  const plain = typeof offer.get === 'function' ? offer.get({ plain: true }) : offer;
   const effectiveStatus = calculateOfferStatus(plain);
   return {
     ...plain,
@@ -52,7 +51,6 @@ exports.createOffer = async (req, res) => {
       status = 'DRAFT'
     } = req.body;
 
-    // 1. Backend Validations
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Offer name is required.' });
     }
@@ -67,8 +65,7 @@ exports.createOffer = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Promo code must be 3-30 alphanumeric characters.' });
     }
 
-    // Check Promo Code Uniqueness
-    const existingOffer = await Offer.findOne({ where: { code: normalizedCode } });
+    const existingOffer = await offerQuery.findOfferCodeExistsQuery(normalizedCode);
     if (existingOffer) {
       return res.status(400).json({ success: false, message: 'Promo code already exists.' });
     }
@@ -101,24 +98,6 @@ exports.createOffer = async (req, res) => {
       return res.status(400).json({ success: false, message: 'End date & time must be after start date & time.' });
     }
 
-    // Validate course selection if scope is SELECTED_COURSES
-    let validCourseIds = [];
-    if (scope === 'SELECTED_COURSES') {
-      if (!Array.isArray(courseIds) || courseIds.length === 0) {
-        return res.status(400).json({ success: false, message: 'Please select at least one course for Selected Courses scope.' });
-      }
-
-      const existingCourses = await Course.findAll({
-        where: { id: courseIds },
-        attributes: ['id']
-      });
-      validCourseIds = existingCourses.map(c => c.id);
-      if (validCourseIds.length === 0) {
-        return res.status(400).json({ success: false, message: 'None of the selected courses exist.' });
-      }
-    }
-
-    // Calculate initial status
     let initialStatus = status;
     if (status !== 'DRAFT' && status !== 'DISABLED') {
       const now = new Date();
@@ -131,8 +110,7 @@ exports.createOffer = async (req, res) => {
       }
     }
 
-    // Create Offer Record
-    const offer = await Offer.create({
+    const offerData = {
       name: name.trim(),
       code: normalizedCode,
       description: description ? description.trim() : null,
@@ -146,22 +124,9 @@ exports.createOffer = async (req, res) => {
       audience: ['ALL', 'STUDENTS', 'INSTRUCTORS'].includes(audience) ? audience : 'ALL',
       status: initialStatus,
       createdBy: req.admin ? req.admin.id : null
-    });
+    };
 
-    // Create OfferCourse Relations if SELECTED_COURSES
-    if (scope === 'SELECTED_COURSES' && validCourseIds.length > 0) {
-      const offerCourseRecords = validCourseIds.map(courseId => ({
-        offerId: offer.id,
-        courseId
-      }));
-      await OfferCourse.bulkCreate(offerCourseRecords);
-    }
-
-    const fullOffer = await Offer.findByPk(offer.id, {
-      include: [
-        { model: Course, as: 'courses', attributes: ['id', 'courseName', 'price'], through: { attributes: [] } }
-      ]
-    });
+    const fullOffer = await offerQuery.createOfferWithCoursesQuery(offerData, courseIds);
 
     return res.status(201).json({
       success: true,
@@ -182,27 +147,7 @@ exports.getAllOffers = async (req, res) => {
   try {
     const { search, status, discountType } = req.query;
 
-    const whereClause = {};
-
-    if (search && search.trim()) {
-      const query = `%${search.trim()}%`;
-      whereClause[Op.or] = [
-        { name: { [Op.iLike]: query } },
-        { code: { [Op.iLike]: query } }
-      ];
-    }
-
-    if (discountType && ['PERCENTAGE', 'FIXED'].includes(discountType)) {
-      whereClause.discountType = discountType;
-    }
-
-    const offers = await Offer.findAll({
-      where: whereClause,
-      include: [
-        { model: Course, as: 'courses', attributes: ['id', 'courseName', 'price'], through: { attributes: [] } }
-      ],
-      order: [['createdAt', 'DESC']]
-    });
+    const offers = await offerQuery.findAllOffersFilteredQuery({ search, discountType });
 
     let formattedOffers = offers.map(o => formatOfferResponse(o));
 
@@ -227,11 +172,7 @@ exports.getAllOffers = async (req, res) => {
 exports.getOfferById = async (req, res) => {
   try {
     const { id } = req.params;
-    const offer = await Offer.findByPk(id, {
-      include: [
-        { model: Course, as: 'courses', attributes: ['id', 'courseName', 'price', 'thumbnail'], through: { attributes: [] } }
-      ]
-    });
+    const offer = await offerQuery.findOfferByIdWithCoursesQuery(id);
 
     if (!offer) {
       return res.status(404).json({ success: false, message: 'Offer not found.' });
@@ -254,7 +195,7 @@ exports.getOfferById = async (req, res) => {
 exports.updateOffer = async (req, res) => {
   try {
     const { id } = req.params;
-    const offer = await Offer.findByPk(id);
+    const offer = await offerQuery.findOfferByIdQuery(id);
 
     if (!offer) {
       return res.status(404).json({ success: false, message: 'Offer not found.' });
@@ -276,76 +217,49 @@ exports.updateOffer = async (req, res) => {
       status
     } = req.body;
 
-    // Prevent changing promo code if offer has already been used
     if (code && code.trim().toUpperCase() !== offer.code && offer.totalUses > 0) {
       return res.status(400).json({ success: false, message: 'Promo code cannot be modified after it has been used.' });
     }
 
+    const updateFields = {};
     if (code && code.trim().toUpperCase() !== offer.code) {
       const normalizedCode = code.trim().toUpperCase();
-      const existing = await Offer.findOne({ where: { code: normalizedCode, id: { [Op.ne]: id } } });
+      const existing = await offerQuery.findOfferCodeExistsQuery(normalizedCode, id);
       if (existing) {
         return res.status(400).json({ success: false, message: 'Promo code already exists.' });
       }
-      offer.code = normalizedCode;
+      updateFields.code = normalizedCode;
     }
 
-    if (name) offer.name = name.trim();
-    if (description !== undefined) offer.description = description ? description.trim() : null;
-
-    if (discountType && ['PERCENTAGE', 'FIXED'].includes(discountType)) {
-      offer.discountType = discountType;
-    }
+    if (name) updateFields.name = name.trim();
+    if (description !== undefined) updateFields.description = description ? description.trim() : null;
+    if (discountType && ['PERCENTAGE', 'FIXED'].includes(discountType)) updateFields.discountType = discountType;
 
     if (discountValue !== undefined) {
       const numVal = parseFloat(discountValue);
       if (isNaN(numVal) || numVal <= 0) {
         return res.status(400).json({ success: false, message: 'Discount value must be a positive number.' });
       }
-      if (offer.discountType === 'PERCENTAGE' && numVal > 100) {
+      if (discountType === 'PERCENTAGE' && numVal > 100) {
         return res.status(400).json({ success: false, message: 'Percentage discount cannot exceed 100%.' });
       }
-      offer.discountValue = numVal;
+      updateFields.discountValue = numVal;
     }
 
-    if (startAt) offer.startAt = new Date(startAt);
-    if (endAt) offer.endAt = new Date(endAt);
+    if (startAt) updateFields.startAt = new Date(startAt);
+    if (endAt) updateFields.endAt = new Date(endAt);
 
-    if (offer.endAt <= offer.startAt) {
+    if (updateFields.startAt && updateFields.endAt && updateFields.endAt <= updateFields.startAt) {
       return res.status(400).json({ success: false, message: 'End date & time must be after start date & time.' });
     }
 
-    if (scope && ['ALL_COURSES', 'SELECTED_COURSES'].includes(scope)) {
-      offer.scope = scope;
-    }
+    if (scope && ['ALL_COURSES', 'SELECTED_COURSES'].includes(scope)) updateFields.scope = scope;
+    if (maxUses !== undefined) updateFields.maxUses = maxUses ? parseInt(maxUses, 10) : null;
+    if (maxUsesPerUser !== undefined) updateFields.maxUsesPerUser = maxUsesPerUser ? parseInt(maxUsesPerUser, 10) : null;
+    if (audience && ['ALL', 'STUDENTS', 'INSTRUCTORS'].includes(audience)) updateFields.audience = audience;
+    if (status && ['DRAFT', 'SCHEDULED', 'ACTIVE', 'EXPIRED', 'DISABLED'].includes(status)) updateFields.status = status;
 
-    if (maxUses !== undefined) offer.maxUses = maxUses ? parseInt(maxUses, 10) : null;
-    if (maxUsesPerUser !== undefined) offer.maxUsesPerUser = maxUsesPerUser ? parseInt(maxUsesPerUser, 10) : null;
-    if (audience && ['ALL', 'STUDENTS', 'INSTRUCTORS'].includes(audience)) offer.audience = audience;
-
-    if (status && ['DRAFT', 'SCHEDULED', 'ACTIVE', 'EXPIRED', 'DISABLED'].includes(status)) {
-      offer.status = status;
-    }
-
-    await offer.save();
-
-    // Update Course relations
-    if (offer.scope === 'SELECTED_COURSES') {
-      await OfferCourse.destroy({ where: { offerId: offer.id } });
-      if (Array.isArray(courseIds) && courseIds.length > 0) {
-        const existingCourses = await Course.findAll({ where: { id: courseIds }, attributes: ['id'] });
-        const records = existingCourses.map(c => ({ offerId: offer.id, courseId: c.id }));
-        await OfferCourse.bulkCreate(records);
-      }
-    } else {
-      await OfferCourse.destroy({ where: { offerId: offer.id } });
-    }
-
-    const updatedOffer = await Offer.findByPk(id, {
-      include: [
-        { model: Course, as: 'courses', attributes: ['id', 'courseName', 'price'], through: { attributes: [] } }
-      ]
-    });
+    const updatedOffer = await offerQuery.updateOfferWithCoursesQuery(id, updateFields, courseIds);
 
     return res.status(200).json({
       success: true,
@@ -371,13 +285,10 @@ exports.updateOfferStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid status value.' });
     }
 
-    const offer = await Offer.findByPk(id);
+    const offer = await offerQuery.updateOfferStatusQuery(id, status);
     if (!offer) {
       return res.status(404).json({ success: false, message: 'Offer not found.' });
     }
-
-    offer.status = status;
-    await offer.save();
 
     return res.status(200).json({
       success: true,
@@ -397,40 +308,12 @@ exports.updateOfferStatus = async (req, res) => {
 exports.duplicateOffer = async (req, res) => {
   try {
     const { id } = req.params;
-    const offer = await Offer.findByPk(id, {
-      include: [{ model: Course, as: 'courses' }]
-    });
+    const adminId = req.admin ? req.admin.id : null;
+    const createdDuplicate = await offerQuery.duplicateOfferQuery(id, adminId);
 
-    if (!offer) {
+    if (!createdDuplicate) {
       return res.status(404).json({ success: false, message: 'Source offer not found.' });
     }
-
-    const newCode = `${offer.code}_COPY_${Math.floor(100 + Math.random() * 900)}`;
-
-    const newOffer = await Offer.create({
-      name: `${offer.name} (Copy)`,
-      code: newCode,
-      description: offer.description,
-      discountType: offer.discountType,
-      discountValue: offer.discountValue,
-      scope: offer.scope,
-      startAt: offer.startAt,
-      endAt: offer.endAt,
-      maxUses: offer.maxUses,
-      maxUsesPerUser: offer.maxUsesPerUser,
-      audience: offer.audience,
-      status: 'DRAFT',
-      createdBy: req.admin ? req.admin.id : null
-    });
-
-    if (offer.scope === 'SELECTED_COURSES' && offer.courses && offer.courses.length > 0) {
-      const records = offer.courses.map(c => ({ offerId: newOffer.id, courseId: c.id }));
-      await OfferCourse.bulkCreate(records);
-    }
-
-    const createdDuplicate = await Offer.findByPk(newOffer.id, {
-      include: [{ model: Course, as: 'courses', attributes: ['id', 'courseName', 'price'], through: { attributes: [] } }]
-    });
 
     return res.status(201).json({
       success: true,
@@ -450,24 +333,18 @@ exports.duplicateOffer = async (req, res) => {
 exports.deleteOffer = async (req, res) => {
   try {
     const { id } = req.params;
-    const offer = await Offer.findByPk(id);
+    const result = await offerQuery.deleteOfferOrDisableQuery(id);
 
-    if (!offer) {
+    if (result.notFound) {
       return res.status(404).json({ success: false, message: 'Offer not found.' });
     }
 
-    // If offer has historical usage, archive/disable it instead of hard deletion to maintain integrity
-    if (offer.totalUses > 0) {
-      offer.status = 'DISABLED';
-      await offer.save();
+    if (result.disabled) {
       return res.status(200).json({
         success: true,
         message: 'Offer has historical usage. It was disabled instead of deleted.'
       });
     }
-
-    await OfferCourse.destroy({ where: { offerId: offer.id } });
-    await offer.destroy();
 
     return res.status(200).json({
       success: true,
@@ -497,31 +374,22 @@ exports.validateAndCalculateCoupon = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Course ID is required.' });
     }
 
-    // 1. Check Course Exists
-    const course = await Course.findByPk(courseId);
+    const course = await courseQuery.findCourseByIdQuery(courseId);
     if (!course) {
       return res.status(404).json({ success: false, message: 'Course not found.' });
     }
 
-    // Free plan check
     if (targetPlan === 'free') {
       return res.status(400).json({ success: false, message: 'Coupon is not applicable to free plans.' });
     }
 
-    // 2. Find Offer
     const normalizedCode = code.trim().toUpperCase();
-    const offer = await Offer.findOne({
-      where: { code: normalizedCode },
-      include: [
-        { model: Course, as: 'courses', attributes: ['id'] }
-      ]
-    });
+    const offer = await offerQuery.findOfferByCodeQuery(normalizedCode);
 
     if (!offer) {
       return res.status(404).json({ success: false, message: 'Coupon not found.' });
     }
 
-    // 3. Status and Date Checks
     if (offer.status === 'DISABLED' || offer.status === 'DRAFT') {
       return res.status(400).json({ success: false, message: 'Coupon is not active.' });
     }
@@ -538,7 +406,6 @@ exports.validateAndCalculateCoupon = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Coupon has expired.' });
     }
 
-    // 4. Scope / Course Eligibility Check
     if (offer.scope === 'SELECTED_COURSES') {
       const eligibleCourseIds = offer.courses ? offer.courses.map(c => c.id) : [];
       if (!eligibleCourseIds.includes(Number(courseId))) {
@@ -546,24 +413,18 @@ exports.validateAndCalculateCoupon = async (req, res) => {
       }
     }
 
-    // 5. Total Uses Check
     if (offer.maxUses !== null && offer.totalUses >= offer.maxUses) {
       return res.status(400).json({ success: false, message: 'This coupon has reached its maximum total usage limit.' });
     }
 
-    // 6. User Specific Usage Check
-    const { OfferRedemption } = require('../models');
     if (userId) {
-      const userRedemptionCount = await OfferRedemption.count({
-        where: { offerId: offer.id, userId }
-      });
-      const maxPerUser = offer.maxUsesPerUser !== null ? offer.maxUsesPerUser : 1; // Default to 1
+      const userRedemptionCount = await offerQuery.getOfferUserRedemptionCountQuery(offer.id, userId);
+      const maxPerUser = offer.maxUsesPerUser !== null ? offer.maxUsesPerUser : 1;
       if (userRedemptionCount >= maxPerUser) {
         return res.status(400).json({ success: false, message: 'You have already used this coupon.' });
       }
     }
 
-    // 7. Calculate Pricing
     const { calculatePlanPrice } = require('../config/plans');
     const originalAmount = calculatePlanPrice(course, targetPlan);
 
@@ -599,4 +460,3 @@ exports.validateAndCalculateCoupon = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error while validating coupon.', error: error.message });
   }
 };
-
