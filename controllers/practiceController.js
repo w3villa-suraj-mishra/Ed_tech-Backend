@@ -431,8 +431,10 @@ const practiceController = {
 
   getTests: async (req, res) => {
     try {
-      const { testType, status, scope, courseId } = req.query;
+      const { testType, status, scope, courseId, id, testId } = req.query;
       const where = {};
+      const targetId = id || testId;
+      if (targetId) where.id = Number(targetId);
       if (testType) where.testType = testType;
       if (status) where.status = status;
       if (scope) where.scope = scope;
