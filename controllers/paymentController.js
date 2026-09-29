@@ -164,20 +164,34 @@ const createPaymentOrder = async (req, res) => {
       };
     });
 
+    const isValidHttpUrl = (str) => {
+      if (!str || typeof str !== 'string') return false;
+      try {
+        const u = new URL(str);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    };
+
     const lineItems = purchaseItems.map(({ course, payablePrice }) => ({
       price_data: {
         currency: 'inr',
         product_data: {
           name: `${course.courseName} (${targetPlan.toUpperCase()} Plan)${validatedOffer ? ` - Coupon ${validatedOffer.code}` : ''}`,
           description: targetPlan === PLAN_TYPES.SILVER ? '1 Year Full Course Access' : 'Lifetime Full Course Access',
-          images: course.thumbnail ? [course.thumbnail] : [],
+          images: (course.thumbnail && isValidHttpUrl(course.thumbnail)) ? [course.thumbnail] : [],
         },
         unit_amount: Math.round(payablePrice * 100),
       },
       quantity: 1,
     }));
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+    let rawFrontend = (process.env.FRONTEND_URL || 'http://localhost:3001').trim();
+    if (!rawFrontend.startsWith('http://') && !rawFrontend.startsWith('https://')) {
+      rawFrontend = `https://${rawFrontend}`;
+    }
+    const frontendUrl = rawFrontend.replace(/\/+$/, '');
     const hasRealStripeKey = process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_SECRET_KEY.includes('placeholder');
 
     if (hasRealStripeKey) {
