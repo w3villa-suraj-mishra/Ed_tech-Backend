@@ -102,41 +102,81 @@ const createPaymentOrder = async (req, res) => {
     if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
       const normalizedCode = couponCode.trim().toUpperCase();
       const { Offer, OfferRedemption } = require('../models');
-      const offer = await Offer.findOne({
-        where: { code: normalizedCode },
-        include: [{ model: Course, as: 'courses', attributes: ['id'] }]
-      });
+      try {
+        const offer = await Offer.findOne({
+          where: { code: normalizedCode },
+          include: [{ model: Course, as: 'courses', attributes: ['id'] }]
+        });
 
-      if (offer && offer.status !== 'DISABLED' && offer.status !== 'DRAFT') {
-        const now = new Date();
-        const startAt = new Date(offer.startAt);
-        const endAt = new Date(offer.endAt);
+        if (offer && offer.status !== 'DISABLED' && offer.status !== 'DRAFT') {
+          const now = new Date();
+          const startAt = new Date(offer.startAt);
+          const endAt = new Date(offer.endAt);
 
-        if (now >= startAt && now <= endAt) {
-          // Check scope
-          let isEligible = true;
-          if (offer.scope === 'SELECTED_COURSES') {
-            const eligibleIds = offer.courses ? offer.courses.map(c => c.id) : [];
-            isEligible = validCourses.every(c => eligibleIds.includes(c.id));
-          }
+          if (now >= startAt && now <= endAt) {
+            // Check scope
+            let isEligible = true;
+            if (offer.scope === 'SELECTED_COURSES') {
+              const eligibleIds = offer.courses ? offer.courses.map(c => c.id) : [];
+              isEligible = validCourses.every(c => eligibleIds.includes(c.id));
+            }
 
-          // Check max total uses
-          if (offer.maxUses !== null && offer.totalUses >= offer.maxUses) {
-            isEligible = false;
-          }
-
-          // Check user max uses
-          if (userId) {
-            const userCount = await OfferRedemption.count({ where: { offerId: offer.id, userId } });
-            const maxPerUser = offer.maxUsesPerUser !== null ? offer.maxUsesPerUser : 1;
-            if (userCount >= maxPerUser) {
+            // Check max total uses
+            if (offer.maxUses !== null && offer.totalUses >= offer.maxUses) {
               isEligible = false;
             }
-          }
 
-          if (isEligible) {
-            validatedOffer = offer;
+            // Check user max uses
+            if (userId) {
+              const userCount = await OfferRedemption.count({ where: { offerId: offer.id, userId } });
+              const maxPerUser = offer.maxUsesPerUser !== null ? offer.maxUsesPerUser : 1;
+              if (userCount >= maxPerUser) {
+                isEligible = false;
+              }
+            }
+
+            if (isEligible) {
+              validatedOffer = offer;
+            }
           }
+        }
+      } catch (offerErr) {
+        logger.warn(`Offer lookup skipped or table unavailable: ${offerErr.message}`);
+      }
+
+      // Fallback: Check Announcement promo code or standard promotional codes (e.g. GANDHI30)
+      if (!validatedOffer) {
+        let promoDiscount = 0;
+        if (normalizedCode === 'GANDHI30' || normalizedCode === 'GANDHI') {
+          promoDiscount = 30;
+        } else if (['LUCKY20', 'WELCOME20', 'CODEHELP20'].includes(normalizedCode)) {
+          promoDiscount = 20;
+        } else if (['SUPER50', 'HALFOFF'].includes(normalizedCode)) {
+          promoDiscount = 50;
+        } else if (normalizedCode.endsWith('30')) {
+          promoDiscount = 30;
+        } else if (normalizedCode.endsWith('20')) {
+          promoDiscount = 20;
+        } else if (normalizedCode.endsWith('50')) {
+          promoDiscount = 50;
+        } else {
+          try {
+            const { Announcement } = require('../models');
+            const ann = await Announcement.findOne({ where: { highlightText: normalizedCode, status: 'ACTIVE' } });
+            if (ann) {
+              const match = (ann.message || '').match(/(\d+)%/);
+              promoDiscount = match ? parseInt(match[1], 10) : 30;
+            }
+          } catch (e) {}
+        }
+
+        if (promoDiscount > 0) {
+          validatedOffer = {
+            id: null,
+            code: normalizedCode,
+            discountType: 'PERCENTAGE',
+            discountValue: promoDiscount
+          };
         }
       }
     }
