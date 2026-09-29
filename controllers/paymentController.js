@@ -237,6 +237,16 @@ const createPaymentOrder = async (req, res) => {
  */
 const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, paymentRef = null, offerId = null }) => {
   const targetPlan = String(plan).toLowerCase();
+  // Safe mapping to match the PostgreSQL database enum ('free', 'silver', 'gold')
+  const PLAN_TO_DB_ENUM = {
+    free: 'free',
+    silver: 'silver',
+    plus: 'silver',
+    basic: 'silver',
+    gold: 'gold',
+    pro: 'gold'
+  };
+  const dbPlan = PLAN_TO_DB_ENUM[targetPlan] || (['free', 'silver', 'gold'].includes(targetPlan) ? targetPlan : 'silver');
 
   await Promise.all(
     courseIds.map(async (cId) => {
@@ -271,7 +281,7 @@ const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, 
                 offerId: offer.id,
                 userId,
                 courseId: parsedCourseId,
-                plan: targetPlan,
+                plan: dbPlan,
                 orderId: paymentRef || 'DIRECT',
                 discountAmount: discountAmountRecorded
               }
@@ -305,7 +315,7 @@ const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, 
       let enrollmentRecord = null;
       if (existingEnrollment) {
         enrollmentRecord = await existingEnrollment.update({
-          plan: targetPlan,
+          plan: dbPlan,
           status: 'active',
           coursePrice: pricing.originalPrice,
           purchasePrice,
@@ -318,7 +328,7 @@ const activateEnrollments = async ({ userId, courseIds, plan = PLAN_TYPES.GOLD, 
         enrollmentRecord = await Enrollment.create({
           userId,
           courseId: parsedCourseId,
-          plan: targetPlan,
+          plan: dbPlan,
           status: 'active',
           coursePrice: pricing.originalPrice,
           purchasePrice,
