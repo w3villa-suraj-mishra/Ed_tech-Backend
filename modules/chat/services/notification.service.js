@@ -7,16 +7,16 @@ try {
 }
 
 class ChatNotificationService {
-  async notifyNewMessage({ recipientId, senderName, conversationId, messageText }) {
+  async notifyNewMessage({ recipientId, senderName, conversationId, messageText, isRecipientStudent = false }) {
     try {
       if (existingNotificationService && recipientId) {
         await existingNotificationService.create({
           userId: recipientId,
           type: 'CHAT_MESSAGE',
-          source: 'ADMIN',
+          source: isRecipientStudent ? 'ADMIN' : 'STUDENT',
           title: `New message from ${senderName}`,
           message: messageText ? messageText.substring(0, 100) : 'Sent an attachment',
-          link: `/admin/conversations?id=${conversationId}`,
+          link: isRecipientStudent ? null : `/admin/conversations?id=${conversationId}`,
           entityType: 'CONVERSATION',
           entityId: conversationId
         });

@@ -94,7 +94,8 @@ class MessageService {
         recipientId: conversation.userId,
         senderName,
         conversationId: conversation.id,
-        messageText: message.content
+        messageText: message.content,
+        isRecipientStudent: true
       });
     } else {
       // Notify assigned staff, or if unassigned, notify staff in general
@@ -103,7 +104,8 @@ class MessageService {
           recipientId: conversation.assignedTo,
           senderName,
           conversationId: conversation.id,
-          messageText: message.content
+          messageText: message.content,
+          isRecipientStudent: false
         });
       }
     }
