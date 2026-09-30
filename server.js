@@ -195,6 +195,16 @@ app.use((err, req, res, next) => {
   });
 });
 
+process.on('uncaughtException', (err) => {
+  logger.error('UNCAUGHT EXCEPTION:', err.message || err);
+  console.error('[UNCAUGHT EXCEPTION]', err.stack || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('UNHANDLED REJECTION:', reason?.message || reason);
+  console.error('[UNHANDLED REJECTION]', reason);
+});
+
 // ==========================================
 // DATABASE & SERVER
 // ==========================================

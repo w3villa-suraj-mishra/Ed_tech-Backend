@@ -405,15 +405,27 @@ const courseController = {
    */
   getAllCourses: async (req, res) => {
     try {
-      const courses = await courseQuery.findAllPublishedCoursesQuery();
+      const { page, limit, category, search, sortBy } = req.query;
+
+      const result = await courseQuery.findAllPublishedCoursesQuery({
+        page,
+        limit,
+        category,
+        search,
+        sortBy
+      });
 
       const formattedCourses = await Promise.all(
-        courses.map(course => courseService.formatCourse(course))
+        result.courses.map(course => courseService.formatCourse(course))
       );
 
       return res.status(200).json({
         success: true,
-        data: formattedCourses
+        data: formattedCourses,
+        totalCourses: result.totalCourses,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        limit: result.limit
       });
     } catch (error) {
       logger.error('GET ALL COURSES FAILED:', error.message);

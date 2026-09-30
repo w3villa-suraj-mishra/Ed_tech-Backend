@@ -226,9 +226,43 @@ const findInstructorCoursesQuery = async (instructorId) => {
   });
 };
 
-const findAllPublishedCoursesQuery = async () => {
-  return await Course.findAll({
-    where: { status: 'Published' },
+const findAllPublishedCoursesQuery = async (options = {}) => {
+  const { page, limit, category, search, sortBy } = options;
+
+  const whereClause = { status: 'Published' };
+
+  if (category && category !== 'all') {
+    if (!isNaN(category)) {
+      whereClause.categoryId = Number(category);
+    } else {
+      const cat = await Category.findOne({
+        where: {
+          name: { [Op.iLike || Op.like]: category }
+        }
+      });
+      if (cat) {
+        whereClause.categoryId = cat.id;
+      }
+    }
+  }
+
+  if (search) {
+    const q = `%${search.trim()}%`;
+    whereClause[Op.or] = [
+      { courseName: { [Op.iLike || Op.like]: q } },
+      { courseDescription: { [Op.iLike || Op.like]: q } }
+    ];
+  }
+
+  let order = [['createdAt', 'DESC']];
+  if (sortBy === 'price-low') order = [['price', 'ASC']];
+  if (sortBy === 'price-high') order = [['price', 'DESC']];
+
+  let pageNum = Math.max(1, parseInt(page, 10) || 1);
+  let limitNum = limit === 'all' ? null : Math.min(100, Math.max(1, parseInt(limit, 10) || 12));
+
+  let findOptions = {
+    where: whereClause,
     include: [
       {
         model: User,
@@ -243,8 +277,25 @@ const findAllPublishedCoursesQuery = async () => {
         model: RatingAndReview,
         as: 'ratingAndReviews'
       }
-    ]
-  });
+    ],
+    order,
+    distinct: true
+  };
+
+  if (limitNum) {
+    findOptions.limit = limitNum;
+    findOptions.offset = (pageNum - 1) * limitNum;
+  }
+
+  const { count: totalCourses, rows: courses } = await Course.findAndCountAll(findOptions);
+
+  return {
+    courses,
+    totalCourses,
+    totalPages: limitNum ? Math.ceil(totalCourses / limitNum) : 1,
+    currentPage: pageNum,
+    limit: limitNum || totalCourses
+  };
 };
 
 const updateCourseQuery = async (courseId, updateData) => {
