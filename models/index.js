@@ -74,7 +74,7 @@ Course.hasMany(CourseProgress, { foreignKey: 'courseId', as: 'courseProgresses',
 CourseProgress.belongsTo(Course, { foreignKey: 'courseId' });
 
 Course.hasMany(RatingAndReview, { foreignKey: 'courseId', as: 'ratingAndReviews', onDelete: 'CASCADE' });
-RatingAndReview.belongsTo(Course, { foreignKey: 'courseId' });
+RatingAndReview.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
 
 Course.hasMany(CourseComment, { foreignKey: 'courseId', as: 'comments', onDelete: 'CASCADE' });
 CourseComment.belongsTo(Course, { foreignKey: 'courseId' });

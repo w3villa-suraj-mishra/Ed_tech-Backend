@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "build": "echo 'Build succeeded'",
-    "dev": "nodemon server.js",
+    "dev": "NODE_OPTIONS='--max-old-space-size=4096' nodemon server.js",
     "health": "node scripts/health-check.js",
     "migrate": "npx sequelize-cli db:migrate",
     "migrate:undo": "npx sequelize-cli db:migrate:undo",

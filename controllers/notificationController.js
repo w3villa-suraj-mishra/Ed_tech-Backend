@@ -176,11 +176,11 @@ const notificationController = {
   },
 
   getUserNotifications: function(req, res) {
-    return this.getNotifications(req, res);
+    return notificationController.getNotifications(req, res);
   },
 
   createAdminNotification: function(req, res) {
-    return this.broadcastNotification(req, res);
+    return notificationController.broadcastNotification(req, res);
   }
 };
 

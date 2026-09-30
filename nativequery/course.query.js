@@ -378,12 +378,10 @@ const findAllCategoriesQuery = async (options = {}) => {
     order: [['createdAt', 'DESC']]
   };
 
-  let pageNum = null;
-  let limitNum = null;
+  let pageNum = Math.max(1, parseInt(page, 10) || 1);
+  let limitNum = limit === 'all' ? null : Math.max(1, parseInt(limit, 10) || 10);
 
-  if (limit && limit !== 'all') {
-    pageNum = Math.max(1, parseInt(page, 10) || 1);
-    limitNum = Math.max(1, parseInt(limit, 10) || 10);
+  if (limitNum) {
     findOptions.limit = limitNum;
     findOptions.offset = (pageNum - 1) * limitNum;
   }
