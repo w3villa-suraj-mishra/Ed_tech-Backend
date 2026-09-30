@@ -204,7 +204,7 @@ const PORT = process.env.PORT || 5000;
 if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
   const startServer = async () => {
     try {
-      await sequelize.sync({ alter: true });
+      await sequelize.sync();
       logger.info('Database synchronized successfully');
       try {
         const fixTestCaseInputs = require('./scripts/fixTestCaseInputs');
@@ -215,6 +215,14 @@ if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
     } catch (error) {
       logger.error('Database connection warning (server started without DB):', error.message);
     }
+
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        logger.error(`Port ${PORT} is already in use. Please kill the running process on port ${PORT} or wait a moment.`);
+      } else {
+        logger.error('Server error:', error.message);
+      }
+    });
 
     server.listen(PORT, () => {
       logger.info(`Server is running on port ${PORT}`);

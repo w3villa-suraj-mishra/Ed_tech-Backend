@@ -428,6 +428,10 @@ router.get(
   '/course/showAllCategories',
   courseController.showAllCategories
 );
+router.get(
+  '/course/getCategoriesCount',
+  courseController.getCategoriesCount
+);
 router.post(
   '/course/createCategory',
   courseController.createCategory

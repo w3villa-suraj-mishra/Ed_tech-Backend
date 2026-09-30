@@ -614,18 +614,42 @@ const courseController = {
   },
 
   /**
-   * Show all categories with published course counts
+   * Show all categories with published course counts and pagination support
    */
   showAllCategories: async (req, res) => {
     try {
-      const categoriesJson = await courseQuery.findAllCategoriesQuery();
+      const { page, limit, search } = req.query;
+      const result = await courseQuery.findAllCategoriesQuery({ page, limit, search });
 
       return res.status(200).json({
         success: true,
-        data: categoriesJson
+        data: result.categories,
+        totalCategories: result.totalCategories,
+        totalPages: result.totalPages,
+        currentPage: result.currentPage,
+        limit: result.limit
       });
     } catch (error) {
       logger.error('SHOW ALL CATEGORIES FAILED:', error.message);
+      return res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
+
+  /**
+   * Get total count of categories (Ultra fast count query)
+   */
+  getCategoriesCount: async (req, res) => {
+    try {
+      const count = await courseQuery.getCategoriesCountQuery();
+      return res.status(200).json({
+        success: true,
+        count
+      });
+    } catch (error) {
+      logger.error('GET CATEGORIES COUNT FAILED:', error.message);
       return res.status(500).json({
         success: false,
         message: error.message

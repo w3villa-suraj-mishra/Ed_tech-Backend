@@ -360,29 +360,79 @@ const findAllRatingsAndReviewsQuery = async () => {
   });
 };
 
-const findAllCategoriesQuery = async () => {
-  const categories = await Category.findAll();
-  const courseCounts = await Course.findAll({
-    attributes: [
-      'categoryId',
-      [Course.sequelize.fn('COUNT', Course.sequelize.col('id')), 'courseCount']
-    ],
-    where: { status: 'Published' },
-    group: ['categoryId'],
-    raw: true
-  });
+const getCategoriesCountQuery = async () => {
+  return await Category.count();
+};
 
+const findAllCategoriesQuery = async (options = {}) => {
+  const { page, limit, search } = options;
+  const whereClause = {};
+
+  if (search) {
+    const { Op } = require('sequelize');
+    whereClause.name = { [Op.iLike || Op.like]: `%${search}%` };
+  }
+
+  let findOptions = {
+    where: whereClause,
+    order: [['createdAt', 'DESC']]
+  };
+
+  let pageNum = null;
+  let limitNum = null;
+
+  if (limit && limit !== 'all') {
+    pageNum = Math.max(1, parseInt(page, 10) || 1);
+    limitNum = Math.max(1, parseInt(limit, 10) || 10);
+    findOptions.limit = limitNum;
+    findOptions.offset = (pageNum - 1) * limitNum;
+  }
+
+  const { count: totalCategories, rows: categories } = await Category.findAndCountAll(findOptions);
+
+  const categoryIds = categories.map(c => c.id);
   const countMap = {};
-  courseCounts.forEach(item => {
-    if (item.categoryId) {
-      countMap[item.categoryId] = parseInt(item.courseCount, 10);
-    }
+
+  if (categoryIds.length > 0) {
+    const { Op } = require('sequelize');
+    const courseCounts = await Course.findAll({
+      attributes: [
+        'categoryId',
+        [Course.sequelize.fn('COUNT', Course.sequelize.col('id')), 'courseCount']
+      ],
+      where: {
+        status: 'Published',
+        categoryId: { [Op.in]: categoryIds }
+      },
+      group: ['categoryId'],
+      raw: true
+    });
+
+    courseCounts.forEach(item => {
+      if (item.categoryId) {
+        countMap[item.categoryId] = parseInt(item.courseCount, 10);
+      }
+    });
+  }
+
+  const mappedCategories = categories.map(cat => {
+    const cnt = countMap[cat.id] || 0;
+    return {
+      ...cat.toJSON(),
+      coursesCount: cnt,
+      courseCount: cnt
+    };
   });
 
-  return categories.map(cat => ({
-    ...cat.toJSON(),
-    coursesCount: countMap[cat.id] || 0
-  }));
+  const totalPages = limitNum ? Math.ceil(totalCategories / limitNum) : 1;
+
+  return {
+    categories: mappedCategories,
+    totalCategories,
+    totalPages,
+    currentPage: pageNum || 1,
+    limit: limitNum || totalCategories
+  };
 };
 
 const updateSubSectionDurationQuery = async (subSectionId, duration) => {
@@ -417,5 +467,6 @@ module.exports = {
   upsertRatingAndReviewQuery,
   findAllRatingsAndReviewsQuery,
   findAllCategoriesQuery,
+  getCategoriesCountQuery,
   updateSubSectionDurationQuery
 };
